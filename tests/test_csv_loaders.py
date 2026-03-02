@@ -52,7 +52,8 @@ class TestLoadScalesCsv:
 
     def test_84_tendencies_loaded(self):
         result = load_scales_csv(SCALES_PATH)
-        # The file has 84 tendency rows
+        # The Scales CSV has 84 tendency rows (excludes sub-zones and Driving Layup
+        # which are additional entries only present in primjer.txt)
         assert len(result) == 84
 
     def test_raises_on_missing_file(self):

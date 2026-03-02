@@ -69,7 +69,7 @@ def load_scales_csv(filepath: str) -> dict[str, Any]:
     return result
 
 
-def load_atd_csv(filepath: str) -> "import pandas; pandas.DataFrame":
+def load_atd_csv(filepath: str) -> "pd.DataFrame":
     """
     Parse ATD Committee CSV.
 
