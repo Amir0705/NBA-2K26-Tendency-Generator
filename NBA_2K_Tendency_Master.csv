@@ -1,0 +1,10 @@
+NBA 2K Tendency Master (Scales + Caps)
+
+Locked rules:
+"1) This workbook is the single source of truth for tendency definitions, scale bands, NBA norm bands, and hard caps."
+2) Hard caps are spam-safe (gameplay) AND sim-safe unless you explicitly override.
+3) Use the locked tendency order when building player tables.
+4) Values you assign to players should end in 0 or 5 (scale rows here can use ranges).
+"5) No Setup Dribble cap = 35 (absolute). Step-Back Mid cap = 40, Step-Back 3 cap = 35."
+"6) Alley-Oop Finish cap = 55, Putback cap = 55, Crash cap = 45. Attack Strong on Finish cap = 60."
+7) Roll vs Pop and Spot vs Cut are combined balance sliders (0–100). Avoid extremes unless role demands it.
