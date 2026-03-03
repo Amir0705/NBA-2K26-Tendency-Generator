@@ -1,4 +1,4 @@
-"""Hybrid combiner stub — Phase 5 implementation."""
+"""Hybrid combiner — blends formula predictions with ML residual corrections."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,53 +6,66 @@ from typing import Any
 
 class HybridCombiner:
     """
-    Merges formula-layer and ML-layer tendency predictions into a
-    single authoritative set of values.
+    Merges formula-layer and ML residual corrections into a single
+    authoritative set of tendency values.
     """
 
     def __init__(
         self,
-        registry_path: str,
-        formula_weight: float = 0.5,
-        ml_weight: float = 0.5,
+        formula_layer: Any,
+        predictor: Any | None = None,
+        confidence_scorer: Any | None = None,
     ) -> None:
         """
-        Initialise combiner with blend weights.
+        Initialise combiner.
 
         Parameters
         ----------
-        registry_path:  Path to data/tendency_registry.json.
-        formula_weight: Relative weight given to formula predictions.
-        ml_weight:      Relative weight given to ML predictions.
+        formula_layer:     FormulaLayer instance (always used as baseline).
+        predictor:         TendencyPredictor instance (optional).
+        confidence_scorer: ConfidenceScorer instance (optional).
         """
-        raise NotImplementedError("Phase 5 implementation")
+        self._formula = formula_layer
+        self._predictor = predictor
+        self._confidence = confidence_scorer
 
-    def combine(
-        self,
-        formula_preds: dict[str, int],
-        ml_preds: dict[str, int],
-        confidence: dict[str, float] | None = None,
-    ) -> dict[str, int]:
+    def combine(self, features: dict) -> dict[str, float]:
         """
-        Blend formula and ML predictions into final tendency values.
+        Combine formula + ML predictions.
+
+        final = formula_value + (ml_weight * ml_correction)
+
+        If no ML model exists for a tendency, use pure formula value.
 
         Parameters
         ----------
-        formula_preds: Canonical-name → value from FormulaLayer.
-        ml_preds:      Canonical-name → value from TendencyPredictor.
-        confidence:    Optional per-tendency confidence weights.
+        features: Feature dict from FeatureEngine.
 
         Returns
         -------
-        Dict of canonical_name → blended integer value (pre-cap).
+        Dict of canonical_name → float tendency value (pre-cap).
         """
-        raise NotImplementedError("Phase 5 implementation")
+        formula_values: dict[str, float] = self._formula.generate(features)
 
-    def explain(
-        self,
-        formula_preds: dict[str, int],
-        ml_preds: dict[str, int],
-        final: dict[str, int],
-    ) -> list[dict[str, Any]]:
-        """Return per-tendency explanation of how the blend was applied."""
-        raise NotImplementedError("Phase 5 implementation")
+        if self._predictor is None:
+            return formula_values
+
+        corrections = self._predictor.predict_corrections(features)
+        if not corrections:
+            return formula_values
+
+        result: dict[str, float] = {}
+        for name, formula_val in formula_values.items():
+            if self._predictor.has_model(name):
+                correction = corrections.get(name)
+                if correction is not None:
+                    if self._confidence is not None:
+                        weight = self._confidence.get_blend_weight(name, features)
+                    else:
+                        weight = 0.2  # conservative default
+                    result[name] = formula_val + weight * correction
+                else:
+                    result[name] = formula_val
+            else:
+                result[name] = formula_val
+        return result
