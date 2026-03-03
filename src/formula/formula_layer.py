@@ -20,8 +20,8 @@ class FormulaLayer:
 
     POSITION_PROFILES: dict[str, dict[str, float]] = {
         "PG": {"post_scale": 0.05, "drive_boost": 1.15, "block_scale": 0.4, "dribble_boost": 1.2},
-        "SG": {"post_scale": 0.10, "drive_boost": 1.10, "block_scale": 0.5, "dribble_boost": 1.1},
-        "SF": {"post_scale": 0.30, "drive_boost": 1.00, "block_scale": 0.7, "dribble_boost": 0.9},
+        "SG": {"post_scale": 0.10, "drive_boost": 1.10, "block_scale": 0.5, "dribble_boost": 0.85},
+        "SF": {"post_scale": 0.30, "drive_boost": 1.00, "block_scale": 0.7, "dribble_boost": 0.95},
         "PF": {"post_scale": 0.70, "drive_boost": 0.85, "block_scale": 0.9, "dribble_boost": 0.6},
         "C":  {"post_scale": 1.00, "drive_boost": 0.65, "block_scale": 1.0, "dribble_boost": 0.3},
     }
@@ -73,10 +73,11 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category A: Core Shooting
         # ---------------------------------------------------------------
+        shooting_skill = scale(fg3a_rate + zmid_total, [0.05, 0.50], [0.6, 1.1])
         shot = (
             0.6 * scale(usg, [0.10, 0.35], [20, 75])
             + 0.4 * scale(fga_p36, [3, 25], [15, 75])
-        )
+        ) * shooting_skill
         t["shot"] = shot
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
@@ -107,7 +108,10 @@ class FormulaLayer:
         t["contested_jumper_mid_range"] = shot_mid_range * 0.55
         t["contested_jumper_three"] = shot_three * 0.35
         t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost
-        t["stepback_jumper_three"] = scale(shot_three, [0, 60], [0, 20]) * dribble_boost
+        t["stepback_jumper_three"] = (
+            scale(shot_three, [0, 60], [0, 30]) * dribble_boost
+            + scale(fg3a_rate, [0.3, 0.6], [0, 10])
+        )
         t["spin_jumper"] = scale(shot_mid_range, [0, 55], [0, 15]) * dribble_boost
 
         # ---------------------------------------------------------------
@@ -144,7 +148,15 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category H: Driving
         # ---------------------------------------------------------------
-        drive = scale(zra, [0.05, 0.45], [15, 55]) * drive_boost
+        zone_drive = scale(zra, [0.05, 0.45], [15, 55])
+        # Guards create drives through ball-handling even with lower RA zone rates
+        creation_drive = scale(usg, [0.15, 0.35], [10, 40]) * dribble_boost
+        if pos in ("PG", "SG"):
+            drive = 0.5 * zone_drive + 0.5 * creation_drive
+        elif pos == "SF":
+            drive = 0.6 * zone_drive + 0.4 * creation_drive
+        else:
+            drive = zone_drive * drive_boost  # Bigs: pure zone-based
         t["drive"] = drive
         t["spot_up_drive"] = drive * 0.7
         t["off_screen_drive"] = drive * 0.5
@@ -188,7 +200,9 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category M: Passing
         # ---------------------------------------------------------------
-        t["flashy_pass"] = scale(ast_p36, [2, 10], [5, 35]) * dribble_boost
+        # Flashy pass should be driven by passing ability (ast_per36), not ball-handling
+        guard_flashy_bonus = 1.1 if pos in ("PG", "SG") else 1.0
+        t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus
         t["alley_oop_pass"] = scale(ast_p36, [2, 10], [5, 35]) * (0.5 + 0.5 * dribble_boost)
 
         # ---------------------------------------------------------------
@@ -242,10 +256,15 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category R: Defense
         # ---------------------------------------------------------------
-        t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55])
-        t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55])
+        # Steal tendency: guards get more on-ball/interception credit per steal
+        steal_pos_scale = {"PG": 1.0, "SG": 0.9, "SF": 0.85, "PF": 0.7, "C": 0.55}
+        steal_scale = steal_pos_scale.get(pos, 0.85)
+        t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
+        t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
         t["contest_shot"] = 35 + scale(blk_p36, [0.0, 2.0], [0, 20])
-        t["block_shot"] = scale(blk_p36, [0.0, 3.5], [5, 55])
+        block_scale = profile["block_scale"]
+        raw_block = scale(blk_p36, [0.0, 3.5], [5, 55])
+        t["block_shot"] = raw_block * (0.6 + 0.4 * block_scale)
         t["take_charge"] = (
             scale(pf_p36, [1.5, 4.0], [5, 30]) * (1 - post_factor * 0.3)
         )
@@ -277,11 +296,11 @@ class FormulaLayer:
         t["shot_mid_right_center"] = dist_mid.get("right_center", 20.0)
         t["shot_mid_right"] = dist_mid.get("right", 20.0)
 
-        t["shot_three_left"] = dist_three.get("left", 20.0)
+        t["shot_three_left"] = max(dist_three.get("left", 20.0), 8.0)
         t["shot_three_left_center"] = dist_three.get("left_center", 20.0)
         t["shot_three_center"] = dist_three.get("center", 20.0)
         t["shot_three_right_center"] = dist_three.get("right_center", 20.0)
-        t["shot_three_right"] = dist_three.get("right", 20.0)
+        t["shot_three_right"] = max(dist_three.get("right", 20.0), 8.0)
 
         return t
 
