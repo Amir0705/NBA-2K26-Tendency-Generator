@@ -107,11 +107,11 @@ class TestHelpers:
 
     def test_per36_normal(self):
         # 18 pts/game in 36 min/game → 18 per36
-        result = _per36(18.0, 36.0, 1)
+        result = _per36(18.0, 36.0)
         assert result == pytest.approx(18.0)
 
     def test_per36_avoids_division_by_zero(self):
-        result = _per36(10.0, 0.0, 0)
+        result = _per36(10.0, 0.0)
         assert result >= 0.0
 
 

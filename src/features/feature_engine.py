@@ -35,10 +35,9 @@ def _height_to_inches(height_str: str) -> int:
         return 78  # league-average fallback (~6-6)
 
 
-def _per36(stat: float, minutes_per_game: float, gp: int) -> float:
-    """Compute per-36-minute rate; avoids division by zero."""
-    total_min = minutes_per_game * gp
-    return stat * 36 / max(total_min, 1)
+def _per36(stat_per_game: float, minutes_per_game: float) -> float:
+    """Compute per-36-minute rate from per-game values; avoids division by zero."""
+    return stat_per_game * 36.0 / max(minutes_per_game, 1.0)
 
 
 def _percentile(value: float, all_values: list[float]) -> float:
@@ -116,7 +115,7 @@ class FeatureEngine:
         ts_pct = pts_pg / max(2 * (fga_pg + 0.44 * fta_pg), 0.001)
 
         # --- Per-36 rates ---
-        per36 = lambda s: _per36(s, min_pg, gp)  # noqa: E731
+        per36 = lambda s: _per36(s, min_pg)  # noqa: E731
         pts_p36 = per36(pts_pg)
         fga_p36 = per36(fga_pg)
         fg3a_p36 = per36(fg3a_pg)
@@ -131,11 +130,11 @@ class FeatureEngine:
         pf_p36 = per36(pf_pg)
 
         # --- Derived ratios ---
-        usg_pct_proxy = (fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg, 1) * 48 / 100
-        # Scale down: a typical usage rate of ~0.20 should give ~0.20
-        # The formula: (FGA + 0.44*FTA + TOV) per minute * 48 / ~5 possessions per minute
-        # Simplified: just normalise by minutes played
-        usg_pct_proxy = (fga_pg + 0.44 * fta_pg + tov_pg) / max(min_pg * 5, 1)
+        # USG% proxy: fraction of team possessions used while on court
+        # ~2.2 possessions per minute is the empirical team rate
+        possessions_used = fga_pg + 0.44 * fta_pg + tov_pg
+        team_possessions_while_on = min_pg * 2.2  # ~2.2 poss/min for a team
+        usg_pct_proxy = possessions_used / max(team_possessions_while_on, 1.0)
 
         league_avg_ast_p36 = 5.0  # approximate
         ast_pct_proxy = ast_p36 / max(league_avg_ast_p36, 0.001)
