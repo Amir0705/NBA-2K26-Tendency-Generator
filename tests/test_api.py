@@ -98,11 +98,11 @@ def client():
 
 class TestHealthCheck:
     def test_returns_200(self, client):
-        resp = client.get("/")
+        resp = client.get("/health")
         assert resp.status_code == 200
 
     def test_returns_ok(self, client):
-        resp = client.get("/")
+        resp = client.get("/health")
         data = resp.json()
         assert data["status"] == "ok"
         assert data["version"] == "1.0.0"
