@@ -175,6 +175,47 @@ class NBAApiClient:
         self._cache_set(cache_key, result)
         return result
 
+    def get_team_roster(
+        self, team_abbreviation: str, season: str = "2024-25"
+    ) -> list[dict[str, Any]]:
+        """Get all players on a team roster.
+
+        Returns list of {player_id, full_name, position}.
+        """
+        cache_key = f"team_roster:{team_abbreviation}:{season}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        from nba_api.stats.static import teams as nba_teams  # noqa: PLC0415
+
+        team_list = nba_teams.get_teams()
+        team_info = next(
+            (t for t in team_list if t["abbreviation"].upper() == team_abbreviation.upper()),
+            None,
+        )
+        if team_info is None:
+            return []
+
+        from nba_api.stats.endpoints import CommonTeamRoster  # noqa: PLC0415
+
+        def _call() -> Any:
+            self._rate_limit()
+            return CommonTeamRoster(team_id=team_info["id"], season=season)
+
+        endpoint = self._with_retry(_call, endpoint_name="CommonTeamRoster")
+        rows = _parse_response(endpoint, 0)
+        result = [
+            {
+                "player_id": int(r.get("PlayerID") or r.get("PLAYER_ID", 0)),
+                "full_name": r.get("PLAYER", r.get("DISPLAY_FIRST_LAST", "")),
+                "position": r.get("POSITION", ""),
+            }
+            for r in rows
+        ]
+        self._cache_set(cache_key, result)
+        return result
+
     def get_league_averages(self, season: str = "2024-25") -> dict[str, Any]:
         """Return league-wide per-game averages for percentile calculations."""
         cache_key = f"league_averages:{season}"
