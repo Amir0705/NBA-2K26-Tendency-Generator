@@ -1,44 +1,81 @@
-"""ML predictor stub — Phase 4 implementation."""
+"""ML predictor — loads trained residual-correction models and applies them."""
 from __future__ import annotations
 
-from typing import Any
+import os
 
 
 class TendencyPredictor:
-    """Loads trained models and generates tendency predictions."""
+    """Loads trained models and generates residual corrections."""
 
-    def __init__(self, model_dir: str, registry_path: str) -> None:
+    def __init__(self, model_dir: str = "models/") -> None:
         """
-        Initialise predictor by loading models from *model_dir*.
-
-        Parameters
-        ----------
-        model_dir:     Directory containing persisted model files.
-        registry_path: Path to data/tendency_registry.json.
-        """
-        raise NotImplementedError("Phase 4 implementation")
-
-    def predict(
-        self, features: dict[str, float], tendency_name: str
-    ) -> int:
-        """
-        Return integer tendency prediction for one tendency.
+        Initialise predictor by loading all .joblib models from *model_dir*.
 
         Parameters
         ----------
-        features:      Feature dict from FeatureEngine.
-        tendency_name: canonical_name of the tendency to predict.
+        model_dir: Directory containing persisted model files.
         """
-        raise NotImplementedError("Phase 4 implementation")
+        self._models: dict = {}
+        self._load_models(model_dir)
 
-    def predict_all(
-        self, features: dict[str, float]
-    ) -> dict[str, int]:
-        """
-        Predict all 99 tendencies at once.
+    def _load_models(self, model_dir: str) -> None:
+        """Load all .joblib models from *model_dir*."""
+        if not os.path.isdir(model_dir):
+            return
+        try:
+            import joblib
+        except ImportError:
+            return
+        for fname in os.listdir(model_dir):
+            if fname.endswith(".joblib"):
+                tendency_name = fname[:-7]  # strip ".joblib"
+                path = os.path.join(model_dir, fname)
+                try:
+                    self._models[tendency_name] = joblib.load(path)
+                except Exception:  # noqa: BLE001
+                    pass
 
-        Returns
-        -------
-        Dict of canonical_name → integer value (pre-cap).
+    def predict_corrections(self, features: dict) -> dict[str, float]:
         """
-        raise NotImplementedError("Phase 4 implementation")
+        For each loaded model predict the residual correction.
+
+        Returns {tendency_name: predicted_residual}.
+        """
+        if not self._models:
+            return {}
+        import pandas as pd
+
+        corrections: dict[str, float] = {}
+        for tendency_name, model in self._models.items():
+            try:
+                flat = _flatten_features(features)
+                X = pd.DataFrame([flat])
+                # Align columns to what the model was trained on
+                if hasattr(model, "feature_name_"):
+                    X = X.reindex(columns=model.feature_name_, fill_value=0.0)
+                elif hasattr(model, "feature_names_in_"):
+                    X = X.reindex(columns=model.feature_names_in_, fill_value=0.0)
+                pred = model.predict(X)[0]
+                corrections[tendency_name] = float(pred)
+            except Exception:  # noqa: BLE001
+                pass
+        return corrections
+
+    def has_model(self, tendency_name: str) -> bool:
+        """Check if a trained model exists for this tendency."""
+        return tendency_name in self._models
+
+
+def _flatten_features(features: dict) -> dict[str, float]:
+    """Flatten nested feature dicts (e.g. sub_zone_distribution_*) to scalar."""
+    flat: dict[str, float] = {}
+    for k, v in features.items():
+        if isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                flat[f"{k}__{sub_k}"] = float(sub_v) if sub_v is not None else 0.0
+        elif isinstance(v, bool):
+            flat[k] = float(v)
+        elif isinstance(v, (int, float)):
+            flat[k] = float(v)
+        # skip non-numeric (e.g. position string) — handled via one-hot flags
+    return flat

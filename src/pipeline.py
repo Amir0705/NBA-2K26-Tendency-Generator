@@ -9,7 +9,10 @@ from src.caps.cap_enforcer import CapEnforcer
 from src.export.json_exporter import export_player_json
 from src.features.feature_engine import FeatureEngine
 from src.formula.formula_layer import FormulaLayer
+from src.hybrid.combiner import HybridCombiner
 from src.ingest.nba_api_client import NBAApiClient
+from src.ml.confidence import ConfidenceScorer
+from src.ml.predictor import TendencyPredictor
 from src.validation.guardrails import Guardrails
 
 _DEFAULT_REGISTRY = os.path.join(
@@ -30,6 +33,8 @@ class TendencyPipeline:
         self,
         cache_dir: str = ".cache",
         registry_path: str = _DEFAULT_REGISTRY,
+        model_dir: str | None = None,
+        training_report: dict | None = None,
     ) -> None:
         self._registry_path = os.path.abspath(registry_path)
         self._client = NBAApiClient(cache_dir=cache_dir)
@@ -38,6 +43,19 @@ class TendencyPipeline:
         self._caps = CapEnforcer(self._registry_path)
         self._guardrails = Guardrails()
         self._registry = load_registry(self._registry_path)
+
+        # Build hybrid combiner if model_dir contains trained models
+        predictor: TendencyPredictor | None = None
+        confidence: ConfidenceScorer | None = None
+        if model_dir and os.path.isdir(model_dir):
+            predictor = TendencyPredictor(model_dir=model_dir)
+            confidence = ConfidenceScorer(training_report=training_report)
+
+        self._combiner = HybridCombiner(
+            formula_layer=self._formula,
+            predictor=predictor if (predictor and predictor._models) else None,
+            confidence_scorer=confidence,
+        )
 
     def generate(self, player_id: int, season: str = "2024-25") -> dict[str, Any]:
         """
@@ -66,9 +84,13 @@ class TendencyPipeline:
             errors.append(f"Feature extraction failed: {exc}")
             features = self._fallback_features(player_id)
 
-        # Step 2: Apply formula
+        # Step 2: Apply formula (or hybrid formula+ML)
         try:
-            formula_raw = self._formula.generate(features)
+            combiner = getattr(self, "_combiner", None)
+            formula_raw = (
+                combiner.combine(features) if combiner is not None
+                else self._formula.generate(features)
+            )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Formula error: {exc}")
             formula_raw = {}
