@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NBA 2K26 Tendency Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🏀 NBA 2K26 Tendency Generator</h1>
+  </header>
+
+  <main>
+    <!-- Controls -->
+    <section class="controls card">
+      <div class="search-row">
+        <div class="search-wrap">
+          <input
+            type="text"
+            id="playerSearch"
+            class="input"
+            placeholder="Search player…"
+            autocomplete="off"
+          />
+          <ul id="suggestions" class="suggestions" hidden></ul>
+        </div>
+        <div class="season-wrap">
+          <label for="seasonSelect">Season</label>
+          <select id="seasonSelect" class="input select">
+            <option value="2024-25">2024-25</option>
+            <option value="2023-24">2023-24</option>
+            <option value="2022-23">2022-23</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="divider">OR</div>
+
+      <div class="team-row">
+        <select id="teamSelect" class="input select">
+          <option value="">▼ Select Team</option>
+          <option value="ATL">Atlanta Hawks (ATL)</option>
+          <option value="BOS">Boston Celtics (BOS)</option>
+          <option value="BKN">Brooklyn Nets (BKN)</option>
+          <option value="CHA">Charlotte Hornets (CHA)</option>
+          <option value="CHI">Chicago Bulls (CHI)</option>
+          <option value="CLE">Cleveland Cavaliers (CLE)</option>
+          <option value="DAL">Dallas Mavericks (DAL)</option>
+          <option value="DEN">Denver Nuggets (DEN)</option>
+          <option value="DET">Detroit Pistons (DET)</option>
+          <option value="GSW">Golden State Warriors (GSW)</option>
+          <option value="HOU">Houston Rockets (HOU)</option>
+          <option value="IND">Indiana Pacers (IND)</option>
+          <option value="LAC">LA Clippers (LAC)</option>
+          <option value="LAL">Los Angeles Lakers (LAL)</option>
+          <option value="MEM">Memphis Grizzlies (MEM)</option>
+          <option value="MIA">Miami Heat (MIA)</option>
+          <option value="MIL">Milwaukee Bucks (MIL)</option>
+          <option value="MIN">Minnesota Timberwolves (MIN)</option>
+          <option value="NOP">New Orleans Pelicans (NOP)</option>
+          <option value="NYK">New York Knicks (NYK)</option>
+          <option value="OKC">Oklahoma City Thunder (OKC)</option>
+          <option value="ORL">Orlando Magic (ORL)</option>
+          <option value="PHI">Philadelphia 76ers (PHI)</option>
+          <option value="PHX">Phoenix Suns (PHX)</option>
+          <option value="POR">Portland Trail Blazers (POR)</option>
+          <option value="SAC">Sacramento Kings (SAC)</option>
+          <option value="SAS">San Antonio Spurs (SAS)</option>
+          <option value="TOR">Toronto Raptors (TOR)</option>
+          <option value="UTA">Utah Jazz (UTA)</option>
+          <option value="WAS">Washington Wizards (WAS)</option>
+        </select>
+        <button id="generateTeamBtn" class="btn btn-primary">Generate Team</button>
+      </div>
+    </section>
+
+    <!-- Error banner -->
+    <div id="errorBanner" class="error-banner" hidden></div>
+
+    <!-- Single player result -->
+    <section id="playerResult" class="card" hidden>
+      <div class="player-header">
+        <div class="player-info">
+          <span id="playerName" class="player-name"></span>
+          <span id="playerMeta" class="player-meta"></span>
+        </div>
+        <div class="export-btns">
+          <button class="btn btn-sm" id="copyJsonBtn">📋 Copy JSON</button>
+          <button class="btn btn-sm" id="dlJsonBtn">📥 JSON</button>
+          <button class="btn btn-sm" id="dlCsvBtn">📥 CSV</button>
+          <button class="btn btn-sm" id="dlExcelBtn">📥 Excel</button>
+        </div>
+      </div>
+      <div id="tendenciesContainer"></div>
+    </section>
+
+    <!-- Loading spinner -->
+    <div id="spinner" class="spinner" hidden>
+      <div class="spinner-ring"></div>
+      <span id="spinnerText">Loading…</span>
+    </div>
+
+    <!-- Team result -->
+    <section id="teamResult" class="card" hidden>
+      <h2 id="teamTitle" class="team-title"></h2>
+      <div id="teamAccordion"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
