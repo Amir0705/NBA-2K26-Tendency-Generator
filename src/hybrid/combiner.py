@@ -63,7 +63,7 @@ class HybridCombiner:
                         weight = self._confidence.get_blend_weight(name, features)
                     else:
                         weight = 0.2  # conservative default
-                    result[name] = formula_val + weight * correction
+                    result[name] = max(0.0, min(100.0, formula_val + weight * correction))
                 else:
                     result[name] = formula_val
             else:

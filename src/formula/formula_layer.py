@@ -98,8 +98,9 @@ class FormulaLayer:
         t["spot_up_shot_three"] = shot_three * 0.85
         t["off_screen_shot_three"] = shot_three * 0.65
         t["transition_pull_up_three"] = (
-            scale(fg3a_rate, [0.0, 0.4], [0, 30])
+            scale(fg3a_rate, [0.15, 0.45], [0, 30])
             * scale(pts_p36, [10, 30], [0.5, 1.2])
+            * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
         )
 
         # ---------------------------------------------------------------
@@ -124,11 +125,12 @@ class FormulaLayer:
         # Category E: Finishing
         # ---------------------------------------------------------------
         t["driving_layup"] = scale(zra + zpaint, [0.1, 0.6], [30, 85])
-        t["standing_dunk"] = post_factor * scale(zra, [0.05, 0.4], [0, 60])
+        t["standing_dunk"] = post_factor * scale(zra, [0.05, 0.4], [0, 60]) * (0.5 + 0.5 * drive_boost)
         t["driving_dunk"] = scale(zra, [0.05, 0.4], [0, 50]) * drive_boost
-        t["flashy_dunk"] = t["driving_dunk"] * 0.5
-        t["alley_oop"] = scale(zra, [0.05, 0.35], [5, 45]) * post_factor
-        t["putback"] = scale(oreb_pct, [0.0, 0.4], [5, 45]) * post_factor
+        flashy_factor = {"PG": 0.6, "SG": 0.5, "SF": 0.5, "PF": 0.45, "C": 0.15}
+        t["flashy_dunk"] = t["driving_dunk"] * flashy_factor.get(pos, 0.5) * drive_boost
+        t["alley_oop"] = scale(zra, [0.05, 0.35], [5, 45]) * (0.4 * post_factor + 0.6 * drive_boost)
+        t["putback"] = scale(oreb_pct, [0.0, 0.3], [5, 50]) * (0.6 * post_factor + 0.4 * drive_boost)
         t["use_glass"] = scale(zpaint + zra, [0.1, 0.5], [10, 45])
         t["step_through_shot"] = scale(zpaint, [0.0, 0.25], [0, 30]) * post_factor
 
@@ -160,7 +162,7 @@ class FormulaLayer:
         t["drive"] = drive
         t["spot_up_drive"] = drive * 0.7
         t["off_screen_drive"] = drive * 0.5
-        t["drive_right"] = 50.0
+        t["drive_right"] = f.get("drive_right_bias", 50.0)
 
         # ---------------------------------------------------------------
         # Category I: Triple Threat
@@ -183,13 +185,15 @@ class FormulaLayer:
         creation_score = scale(usg, [0.10, 0.30], [5, 35]) * dribble_boost
         t["driving_crossover"] = creation_score * 1.0
         t["driving_spin"] = creation_score * 0.8
-        t["driving_step_back"] = creation_score * 0.9
+        t["driving_step_back"] = creation_score * 0.7
         t["driving_half_spin"] = creation_score * 0.7
         t["driving_double_crossover"] = creation_score * 0.7
         t["driving_behind_the_back"] = creation_score * 0.7
         t["driving_dribble_hesitation"] = creation_score * 0.95
         t["driving_in_and_out"] = creation_score * 0.85
-        t["no_driving_dribble_move"] = 85 - creation_score * 1.5
+        no_dribble_base = 75 - creation_score * 1.5
+        pos_no_dribble = {"PG": -10, "SG": -5, "SF": 0, "PF": 5, "C": 10}
+        t["no_driving_dribble_move"] = max(15.0, min(75.0, no_dribble_base + pos_no_dribble.get(pos, 0)))
 
         # ---------------------------------------------------------------
         # Category L: Drive Finishing
@@ -250,7 +254,8 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category Q: Discipline
         # ---------------------------------------------------------------
-        play_discipline = 65 - scale(usg, [0.10, 0.30], [0, 25])
+        pos_discipline = {"PG": -5, "SG": 0, "SF": 0, "PF": 5, "C": 10}
+        play_discipline = 60 - scale(usg, [0.10, 0.35], [0, 30]) + pos_discipline.get(pos, 0)
         t["play_discipline"] = max(play_discipline, 35.0)
 
         # ---------------------------------------------------------------
