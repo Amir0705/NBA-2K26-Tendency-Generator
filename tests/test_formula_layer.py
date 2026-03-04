@@ -195,3 +195,77 @@ class TestFormulaLayerCompute:
         t = {"stepback_jumper_three": 40, "stepback_jumper_mid_range": 20}
         result = formula.apply_locked_rules(t)
         assert result["stepback_jumper_three"] <= result["stepback_jumper_mid_range"] + 5
+
+    def test_shot_does_not_exceed_75(self):
+        formula = FormulaLayer()
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            f = _minimal_features(pos)
+            f["usg_pct_proxy"] = 0.40
+            f["fga_per36"] = 30.0
+            f["fg3a_rate"] = 0.60
+            result = formula.generate(f)
+            assert result["shot"] <= 75.0, f"{pos}: shot={result['shot']} exceeds 75"
+
+    def test_touches_does_not_exceed_65(self):
+        formula = FormulaLayer()
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            f = _minimal_features(pos)
+            f["usg_pct_proxy"] = 0.40
+            f["ast_per36"] = 15.0
+            result = formula.generate(f)
+            assert result["touches"] <= 65.0, f"{pos}: touches={result['touches']} exceeds 65"
+
+    def test_apply_locked_rules_off_screen_three_le_shot_three(self):
+        formula = FormulaLayer()
+        t = {"off_screen_shot_three": 50, "shot_three": 30}
+        result = formula.apply_locked_rules(t)
+        assert result["off_screen_shot_three"] <= result["shot_three"]
+
+    def test_apply_locked_rules_contested_three_le_shot_three(self):
+        formula = FormulaLayer()
+        t = {"contested_jumper_three": 45, "shot_three": 20}
+        result = formula.apply_locked_rules(t)
+        assert result["contested_jumper_three"] <= result["shot_three"]
+
+    def test_apply_locked_rules_no_setup_dribble_cap_35(self):
+        formula = FormulaLayer()
+        t = {"no_setup_dribble": 50}
+        result = formula.apply_locked_rules(t)
+        assert result["no_setup_dribble"] <= 35
+
+    def test_apply_locked_rules_roll_vs_pop_clamped(self):
+        formula = FormulaLayer()
+        t_low = {"roll_vs_pop": 2}
+        t_high = {"roll_vs_pop": 99}
+        assert formula.apply_locked_rules(t_low)["roll_vs_pop"] >= 5
+        assert formula.apply_locked_rules(t_high)["roll_vs_pop"] <= 95
+
+    def test_apply_locked_rules_post_hooks_zero_when_post_up_low(self):
+        formula = FormulaLayer()
+        t = {"post_up": 5, "post_hook_left": 10, "post_hook_right": 8}
+        result = formula.apply_locked_rules(t)
+        assert result["post_hook_left"] == 0
+        assert result["post_hook_right"] == 0
+
+    def test_low_three_point_rate_produces_low_three_tendencies(self):
+        """Giannis-like big: very low three-point tendencies."""
+        formula = FormulaLayer()
+        f = _minimal_features("PF")
+        f["fg3a_rate"] = 0.05
+        f["zone_fga_rate_ra"] = 0.40
+        f["zone_fga_rate_paint"] = 0.20
+        f["usg_pct_proxy"] = 0.30
+        result = formula.generate(f)
+        assert result["shot_three"] < 10, f"shot_three={result['shot_three']}"
+        assert result["spot_up_shot_three"] < 10, f"spot_up_shot_three={result['spot_up_shot_three']}"
+
+    def test_sg_post_hooks_locked_to_zero(self):
+        """Booker-like SG: post tendencies should be near 0."""
+        formula = FormulaLayer()
+        f = _minimal_features("SG")
+        f["zone_fga_rate_ra"] = 0.15
+        f["zone_fga_rate_paint"] = 0.10
+        result = formula.generate(f)
+        locked = formula.apply_locked_rules({k: round(v) for k, v in result.items()})
+        assert locked["post_hook_left"] == 0
+        assert locked["post_hook_right"] == 0

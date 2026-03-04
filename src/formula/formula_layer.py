@@ -78,7 +78,7 @@ class FormulaLayer:
             0.6 * scale(usg, [0.10, 0.35], [20, 75])
             + 0.4 * scale(fga_p36, [3, 25], [15, 75])
         ) * shooting_skill
-        t["shot"] = shot
+        t["shot"] = min(shot, 75.0)
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
         t["shot_close"] = scale(zpaint, [0.0, 0.3], [0, 60])
@@ -194,7 +194,7 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category L: Drive Finishing
         # ---------------------------------------------------------------
-        t["attack_strong_on_drive"] = scale(fta_rate, [0.1, 0.5], [20, 55])
+        t["attack_strong_on_drive"] = min(scale(fta_rate, [0.1, 0.5], [20, 65]), 65.0)
         t["dish_to_open_man"] = scale(ast_p36, [1, 10], [15, 50])
 
         # ---------------------------------------------------------------
@@ -278,9 +278,10 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Touches
         # ---------------------------------------------------------------
-        t["touches"] = (
+        t["touches"] = min(
             0.5 * scale(ast_p36, [0, 12], [15, 65])
-            + 0.5 * scale(usg, [0.10, 0.30], [20, 60])
+            + 0.5 * scale(usg, [0.10, 0.30], [20, 60]),
+            65.0,
         )
 
         # ---------------------------------------------------------------
@@ -345,4 +346,29 @@ class FormulaLayer:
                 result["stepback_jumper_three"],
                 result["stepback_jumper_mid_range"] + 5,
             )
+        # Spot-Up Three <= Shot Three + 10
+        if "spot_up_shot_three" in result and "shot_three" in result:
+            result["spot_up_shot_three"] = min(
+                result["spot_up_shot_three"], result["shot_three"] + 10
+            )
+        # Off-Screen Three <= Shot Three
+        if "off_screen_shot_three" in result and "shot_three" in result:
+            result["off_screen_shot_three"] = min(
+                result["off_screen_shot_three"], result["shot_three"]
+            )
+        # Contested Three <= Shot Three
+        if "contested_jumper_three" in result and "shot_three" in result:
+            result["contested_jumper_three"] = min(
+                result["contested_jumper_three"], result["shot_three"]
+            )
+        # No Setup Dribble absolute cap 35
+        if "no_setup_dribble" in result:
+            result["no_setup_dribble"] = min(result["no_setup_dribble"], 35)
+        # Roll vs Pop: clamp to 5-95
+        if "roll_vs_pop" in result:
+            result["roll_vs_pop"] = max(5, min(95, result["roll_vs_pop"]))
+        # Post hooks = 0 if post_up < 10
+        if result.get("post_up", 0) < 10:
+            result["post_hook_left"] = 0
+            result["post_hook_right"] = 0
         return result
