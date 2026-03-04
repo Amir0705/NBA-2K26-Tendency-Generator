@@ -38,34 +38,34 @@ def _write_player_sheet(
     """Populate a worksheet with a single player's tendencies."""
     ws.title = player_name[:31]  # Excel sheet names are max 31 chars
 
-    # Header row
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color=_HEADER_BG, end_color=_HEADER_BG, fill_type="solid")
-    for col, heading in enumerate(["Tendency", "Value", "Category"], start=1):
-        cell = ws.cell(row=1, column=col, value=heading)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+    center = Alignment(horizontal="center")
 
-    # Data rows
-    for row_idx, entry in enumerate(sorted(registry, key=lambda e: e["order"]), start=2):
+    sorted_entries = sorted(registry, key=lambda e: e["order"])
+
+    # Row 1: tendency labels as column headers
+    # Row 2: corresponding integer values
+    for col_idx, entry in enumerate(sorted_entries, start=1):
         canon = entry["canonical_name"]
         label = entry["primjer_label"]
-        category = entry.get("category", "")
         value = tendencies_dict.get(canon, 0)
 
-        ws.cell(row=row_idx, column=1, value=label)
-        val_cell = ws.cell(row=row_idx, column=2, value=value)
+        header_cell = ws.cell(row=1, column=col_idx, value=label)
+        header_cell.font = header_font
+        header_cell.fill = header_fill
+        header_cell.alignment = center
+
+        val_cell = ws.cell(row=2, column=col_idx, value=value)
         val_cell.fill = _value_fill(value)
-        val_cell.alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=3, value=category)
+        val_cell.alignment = center
 
     # Auto-size columns
     for col_idx, col_cells in enumerate(ws.columns, start=1):
         max_len = max((len(str(c.value or "")) for c in col_cells), default=10)
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 40)
 
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "A3"
 
 
 def export_player_excel(
