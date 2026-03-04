@@ -73,6 +73,11 @@ def _build_tendency_response(
         ordered_tendencies[key] = {
             "value": entry["value"],
             "label": entry["label"],
+            "offset": entry["offset"],
+            "type": entry["type"],
+            "bit_offset": entry["bit_offset"],
+            "bit_length": entry["bit_length"],
+            "length": entry["length"],
         }
     return {
         "player_name": player_name,
@@ -185,7 +190,15 @@ def generate_team(team_abbr: str, season: str = "2024-25") -> dict[str, Any]:
             payload = json.loads(json_str)
             ordered: dict[str, Any] = {}
             for key, entry in payload.get("tendencies", {}).items():
-                ordered[key] = {"value": entry["value"], "label": entry["label"]}
+                ordered[key] = {
+                    "value": entry["value"],
+                    "label": entry["label"],
+                    "offset": entry["offset"],
+                    "type": entry["type"],
+                    "bit_offset": entry["bit_offset"],
+                    "bit_length": entry["bit_length"],
+                    "length": entry["length"],
+                }
             players.append({
                 "player_name": full_name,
                 "player_id": pid,

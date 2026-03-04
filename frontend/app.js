@@ -197,7 +197,15 @@ function buildJsonPayload(data) {
   // Build primjer.txt-compatible JSON from current data
   const tendencies = {};
   for (const [key, entry] of Object.entries(data.tendencies)) {
-    tendencies[key] = { value: entry.value, label: entry.label };
+    tendencies[key] = {
+      value: entry.value,
+      label: entry.label,
+      offset: entry.offset,
+      type: entry.type,
+      bit_offset: entry.bit_offset,
+      bit_length: entry.bit_length,
+      length: entry.length,
+    };
   }
   return JSON.stringify({ tendencies }, null, 2);
 }
@@ -401,7 +409,15 @@ function copyTeamPlayerJson(idx) {
   if (!player) return;
   const tendencies = {};
   for (const [key, entry] of Object.entries(player.tendencies)) {
-    tendencies[key] = { value: entry.value, label: entry.label };
+    tendencies[key] = {
+      value: entry.value,
+      label: entry.label,
+      offset: entry.offset,
+      type: entry.type,
+      bit_offset: entry.bit_offset,
+      bit_length: entry.bit_length,
+      length: entry.length,
+    };
   }
   const json = JSON.stringify({ tendencies }, null, 2);
   navigator.clipboard.writeText(json).catch(() => {});
