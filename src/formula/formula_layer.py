@@ -328,7 +328,7 @@ class FormulaLayer:
         merged = dict(features)
         merged["position"] = position
         raw = self.generate(merged)
-        return {k: round(v) for k, v in raw.items()}
+        return {k: max(0, min(100, 5 * round(v / 5))) for k, v in raw.items()}
 
     def apply_locked_rules(
         self, tendencies: dict[str, int]

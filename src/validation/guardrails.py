@@ -246,5 +246,5 @@ def sanitise_tendencies(tendencies: dict[str, Any]) -> dict[str, int]:
             int_val = int(float(v))
         except (TypeError, ValueError):
             continue
-        result[k] = max(0, min(100, int_val))
+        result[k] = max(0, min(100, 5 * round(int_val / 5)))
     return result

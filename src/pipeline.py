@@ -20,6 +20,11 @@ _DEFAULT_REGISTRY = os.path.join(
 )
 
 
+def _round_to_5(x: float) -> int:
+    """Round to nearest multiple of 5, clamped to [0, 100]."""
+    return max(0, min(100, 5 * round(x / 5)))
+
+
 def load_registry(registry_path: str) -> list[dict[str, Any]]:
     """Load tendency registry JSON."""
     with open(registry_path, encoding="utf-8") as fh:
@@ -95,8 +100,8 @@ class TendencyPipeline:
             errors.append(f"Formula error: {exc}")
             formula_raw = {}
 
-        # Step 3: Round to integers
-        rounded = {k: round(v) for k, v in formula_raw.items()}
+        # Step 3: Round to nearest multiple of 5
+        rounded = {k: _round_to_5(v) for k, v in formula_raw.items()}
 
         # Step 4: Guardrail checks (operates on float dict)
         guardrail_input = dict(formula_raw)
@@ -104,7 +109,7 @@ class TendencyPipeline:
             violations = self._guardrails.check(guardrail_input)
             # Apply corrected values back
             for k, v in guardrail_input.items():
-                rounded[k] = round(v)
+                rounded[k] = _round_to_5(v)
         except Exception as exc:  # noqa: BLE001
             violations = []
             errors.append(f"Guardrail error: {exc}")
