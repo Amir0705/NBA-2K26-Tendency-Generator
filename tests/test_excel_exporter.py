@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REGISTRY_PATH = os.path.join(REPO, "data", "tendency_registry.json")
 
-from src.export.excel_exporter import export_player_excel, _write_player_sheet
+from src.export.excel_exporter import export_player_excel, export_team_excel, _write_player_sheet
 
 
 @pytest.fixture(scope="module")
@@ -104,3 +104,72 @@ class TestExportPlayerExcelHorizontal:
         assert ws.cell(row=1, column=1).value == sorted_entries[0]["primjer_label"]
         # Row 2 values
         assert ws.cell(row=2, column=1).value == 30
+
+
+class TestExportTeamExcelGrid:
+    @pytest.fixture(scope="class")
+    def team_data(self, registry):
+        tendencies = {entry["canonical_name"]: 55 for entry in registry}
+        return [
+            {"player_name": "Stephen Curry", "position": "PG", "tendencies": tendencies},
+            {"player_name": "Klay Thompson", "position": "SG", "tendencies": tendencies},
+        ]
+
+    @pytest.fixture(scope="class")
+    def team_wb(self, team_data, registry):
+        result = export_team_excel("GSW", team_data, registry)
+        return load_workbook(io.BytesIO(result))
+
+    def test_returns_bytes(self, team_data, registry):
+        result = export_team_excel("GSW", team_data, registry)
+        assert isinstance(result, bytes)
+
+    def test_single_sheet_only(self, team_wb):
+        assert len(team_wb.sheetnames) == 1
+        assert team_wb.sheetnames[0] == "Summary"
+
+    def test_header_row_player_position(self, team_wb):
+        ws = team_wb.active
+        assert ws.cell(row=1, column=1).value == "Player"
+        assert ws.cell(row=1, column=2).value == "Position"
+
+    def test_header_row_all_tendency_labels(self, team_wb, registry):
+        ws = team_wb.active
+        sorted_entries = sorted(registry, key=lambda e: e["order"])
+        for col_idx, entry in enumerate(sorted_entries, start=3):
+            assert ws.cell(row=1, column=col_idx).value == entry["primjer_label"]
+
+    def test_header_count(self, team_wb, registry):
+        ws = team_wb.active
+        # 2 fixed columns + all tendencies
+        assert ws.max_column == 2 + len(registry)
+
+    def test_player_rows(self, team_wb):
+        ws = team_wb.active
+        assert ws.cell(row=2, column=1).value == "Stephen Curry"
+        assert ws.cell(row=2, column=2).value == "PG"
+        assert ws.cell(row=3, column=1).value == "Klay Thompson"
+        assert ws.cell(row=3, column=2).value == "SG"
+
+    def test_tendency_values_in_rows(self, team_wb, registry):
+        ws = team_wb.active
+        sorted_entries = sorted(registry, key=lambda e: e["order"])
+        # All values were set to 55; check first tendency column
+        assert ws.cell(row=2, column=3).value == 55
+        assert ws.cell(row=3, column=3).value == 55
+
+    def test_value_fill_applied(self, team_wb):
+        ws = team_wb.active
+        # value=55 → green fill (CCFFCC)
+        cell = ws.cell(row=2, column=3)
+        assert cell.fill.fgColor.rgb.endswith("CCFFCC")
+
+    def test_header_bold_white(self, team_wb):
+        ws = team_wb.active
+        cell = ws.cell(row=1, column=1)
+        assert cell.font.bold is True
+        assert cell.font.color.rgb.endswith("FFFFFF")
+
+    def test_freeze_panes_at_c2(self, team_wb):
+        ws = team_wb.active
+        assert str(ws.freeze_panes) == "C2"
