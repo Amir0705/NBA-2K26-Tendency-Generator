@@ -11,6 +11,7 @@ from src.pipeline import TendencyPipeline, load_registry
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REGISTRY_PATH = os.path.join(REPO, "data", "tendency_registry.json")
+PRIMJER_TENDENCY_FIELDS = ("value", "label", "offset", "type", "bit_offset", "bit_length", "length")
 
 
 # ---------------------------------------------------------------------------
@@ -213,3 +214,22 @@ class TestTendencyValues:
         for key, entry in data["tendencies"].items():
             assert "label" in entry, f"Missing label for {key}"
             assert "value" in entry, f"Missing value for {key}"
+
+    def test_tendency_entry_has_all_primjer_fields(self, client):
+        """Each tendency entry must include all primjer.txt-compatible fields."""
+        resp = client.get("/generate/Stephen Curry")
+        data = resp.json()
+        for key, entry in data["tendencies"].items():
+            for field in PRIMJER_TENDENCY_FIELDS:
+                assert field in entry, f"Tendency '{key}' missing field '{field}'"
+
+    def test_team_tendency_entry_has_all_primjer_fields(self, client):
+        """Team endpoint tendency entries must also include all primjer.txt-compatible fields."""
+        resp = client.get("/team/GSW")
+        data = resp.json()
+        for player in data["players"]:
+            for key, entry in player["tendencies"].items():
+                for field in PRIMJER_TENDENCY_FIELDS:
+                    assert field in entry, (
+                        f"Player '{player['player_name']}' tendency '{key}' missing field '{field}'"
+                    )
