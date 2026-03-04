@@ -322,6 +322,16 @@ generateTeamBtn.addEventListener("click", async () => {
 
 function renderTeam(data, season) {
   teamTitle.textContent = `${data.team} — ${data.player_count} players · ${season}`;
+
+  const abbr = encodeURIComponent(data.team_abbr || data.team);
+  const teamExportDiv = document.getElementById("teamExportButtons");
+  if (teamExportDiv) {
+    teamExportDiv.innerHTML = `
+      <button class="btn btn-sm" onclick="window.location.href='/export/csv/team/${abbr}?season=${season}'">📥 Export Team CSV</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}'">📥 Export Team Excel</button>
+    `;
+  }
+
   teamAccordion.innerHTML = data.players.map((player, idx) => {
     const enriched = {};
     for (const [key, entry] of Object.entries(player.tendencies)) {

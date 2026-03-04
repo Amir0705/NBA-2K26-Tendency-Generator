@@ -102,13 +102,12 @@ def export_team_excel(
 ) -> bytes:
     """Export team tendencies to Excel bytes.
 
-    Creates a workbook with:
-    - A summary sheet listing all players with key tendencies.
-    - One sheet per player with full tendencies.
+    Creates a workbook with a single sheet: all tendencies as columns,
+    one row per player.
 
     Parameters
     ----------
-    team_abbr:  Team abbreviation (used in the summary sheet title).
+    team_abbr:  Team abbreviation (used in the sheet title).
     team_data:  List of {player_name, position, tendencies: {canonical_name: int}}.
     registry:   Ordered registry entries.
 
@@ -117,52 +116,45 @@ def export_team_excel(
     xlsx file content as bytes.
     """
     wb = Workbook()
-    summary_ws = wb.active
-    summary_ws.title = "Summary"
+    ws = wb.active
+    ws.title = "Summary"
 
-    # Pick a handful of key tendencies for the summary sheet
-    key_canons = [
-        "shot_three", "shot_mid_range", "shot_close", "driving_layup",
-        "on_ball_defense", "post_up",
-    ]
-    key_entries = [e for e in registry if e["canonical_name"] in key_canons]
-    key_entries.sort(key=lambda e: e["order"])
+    sorted_entries = sorted(registry, key=lambda e: e["order"])
 
-    # Summary header
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color=_HEADER_BG, end_color=_HEADER_BG, fill_type="solid")
-    summary_headers = ["Player", "Position"] + [e["primjer_label"] for e in key_entries]
-    for col, heading in enumerate(summary_headers, start=1):
-        cell = summary_ws.cell(row=1, column=col, value=heading)
+    center = Alignment(horizontal="center")
+
+    # Row 1: header — Player, Position, then all tendency labels
+    for col, heading in enumerate(["Player", "Position"], start=1):
+        cell = ws.cell(row=1, column=col, value=heading)
         cell.font = header_font
         cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = center
 
-    # Summary rows
+    for col_idx, entry in enumerate(sorted_entries, start=3):
+        cell = ws.cell(row=1, column=col_idx, value=entry["primjer_label"])
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+
+    # Row 2+: one row per player
     for row_idx, player in enumerate(team_data, start=2):
         tendencies = player.get("tendencies", {})
-        summary_ws.cell(row=row_idx, column=1, value=player.get("player_name", ""))
-        summary_ws.cell(row=row_idx, column=2, value=player.get("position", ""))
-        for col_idx, entry in enumerate(key_entries, start=3):
+        ws.cell(row=row_idx, column=1, value=player.get("player_name", ""))
+        ws.cell(row=row_idx, column=2, value=player.get("position", ""))
+        for col_idx, entry in enumerate(sorted_entries, start=3):
             val = tendencies.get(entry["canonical_name"], 0)
-            cell = summary_ws.cell(row=row_idx, column=col_idx, value=val)
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.fill = _value_fill(val)
-            cell.alignment = Alignment(horizontal="center")
+            cell.alignment = center
 
-    for col_idx, col_cells in enumerate(summary_ws.columns, start=1):
+    # Auto-size columns
+    for col_idx, col_cells in enumerate(ws.columns, start=1):
         max_len = max((len(str(c.value or "")) for c in col_cells), default=10)
-        summary_ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 40)
-    summary_ws.freeze_panes = "A2"
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 40)
 
-    # Per-player sheets
-    for player in team_data:
-        ws = wb.create_sheet()
-        _write_player_sheet(
-            ws,
-            player.get("player_name", "Player"),
-            player.get("tendencies", {}),
-            registry,
-        )
+    ws.freeze_panes = "C2"
 
     buf = io.BytesIO()
     wb.save(buf)
