@@ -190,6 +190,12 @@ class TestFormulaLayerCompute:
         for k, v in result.items():
             assert isinstance(v, int), f"{k} is not int"
 
+    def test_compute_values_are_multiples_of_5(self):
+        formula = FormulaLayer()
+        result = formula.compute(_minimal_features(), "SG")
+        for k, v in result.items():
+            assert v % 5 == 0, f"{k} = {v} is not a multiple of 5"
+
     def test_apply_locked_rules_stepback(self):
         formula = FormulaLayer()
         t = {"stepback_jumper_three": 40, "stepback_jumper_mid_range": 20}
