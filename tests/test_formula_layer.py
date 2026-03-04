@@ -269,3 +269,101 @@ class TestFormulaLayerCompute:
         locked = formula.apply_locked_rules({k: round(v) for k, v in result.items()})
         assert locked["post_hook_left"] == 0
         assert locked["post_hook_right"] == 0
+
+
+class TestFormulaBugFixes:
+    """Regression tests for the 10 bug fixes."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    def test_standing_dunk_scales_with_drive_boost(self, formula):
+        """PG standing_dunk < PF standing_dunk (same zra); PF has higher drive_boost."""
+        base = {"zone_fga_rate_ra": 0.30, "usg_pct_proxy": 0.20,
+                "fga_per36": 12.0, "fg3a_rate": 0.35, "fta_rate": 0.30,
+                "ast_per36": 5.0, "pts_per36": 18.0, "stl_per36": 1.0,
+                "blk_per36": 0.4, "pf_per36": 2.5, "oreb_pct_proxy": 0.10,
+                "zone_fga_rate_paint": 0.15, "zone_fga_rate_mid_left": 0.08,
+                "zone_fga_rate_mid_center": 0.07, "zone_fga_rate_mid_right": 0.08,
+                "zone_fga_rate_corner3_left": 0.10, "zone_fga_rate_corner3_right": 0.10,
+                "zone_fga_rate_above_break3": 0.22,
+                "sub_zone_distribution_close": {"left": 33.3, "middle": 33.4, "right": 33.3},
+                "sub_zone_distribution_mid": {"left": 20.0, "left_center": 20.0, "center": 20.0, "right_center": 20.0, "right": 20.0},
+                "sub_zone_distribution_three": {"left": 20.0, "left_center": 20.0, "center": 20.0, "right_center": 20.0, "right": 20.0}}
+        pg_f = dict(base, position="PG")
+        pf_f = dict(base, position="PF")
+        pg_r = formula.generate(pg_f)
+        pf_r = formula.generate(pf_f)
+        assert pg_r["standing_dunk"] < pf_r["standing_dunk"]
+
+    def test_alley_oop_uses_drive_boost(self, formula):
+        """SF with high zra should get a reasonable alley_oop (not tiny)."""
+        f = _minimal_features("SF")
+        f["zone_fga_rate_ra"] = 0.35
+        result = formula.generate(f)
+        assert result["alley_oop"] > 10
+
+    def test_putback_scales_with_oreb_pct(self, formula):
+        """High oreb_pct PF should get putback > 15."""
+        f = _minimal_features("PF")
+        f["oreb_pct_proxy"] = 0.25
+        result = formula.generate(f)
+        assert result["putback"] > 15
+
+    def test_transition_pull_up_three_gated_for_bigs(self, formula):
+        """Center with low fg3a_rate should get transition_pull_up_three < 10."""
+        f = _minimal_features("C")
+        f["fg3a_rate"] = 0.10
+        result = formula.generate(f)
+        assert result["transition_pull_up_three"] < 10
+
+    def test_flashy_dunk_low_for_centers(self, formula):
+        """Center flashy_dunk should be very low."""
+        f = _minimal_features("C")
+        f["zone_fga_rate_ra"] = 0.35
+        result = formula.generate(f)
+        assert result["flashy_dunk"] < 10
+
+    def test_drive_right_reads_from_features(self, formula):
+        """When drive_right_bias is provided, it should be used (differs from default 50.0)."""
+        f = _minimal_features()
+        f["drive_right_bias"] = 62.0
+        result = formula.generate(f)
+        assert result["drive_right"] == pytest.approx(62.0)
+        assert result["drive_right"] != pytest.approx(50.0)
+
+    def test_drive_right_defaults_to_50(self, formula):
+        """Without drive_right_bias, drive_right should default to 50."""
+        result = formula.generate(_minimal_features())
+        assert result["drive_right"] == pytest.approx(50.0)
+
+    def test_play_discipline_center_higher_than_pg(self, formula):
+        """Center play_discipline > PG play_discipline with the same USG."""
+        usg = 0.22
+        pg_f = dict(_minimal_features("PG"), usg_pct_proxy=usg)
+        c_f = dict(_minimal_features("C"), usg_pct_proxy=usg)
+        pg_r = formula.generate(pg_f)
+        c_r = formula.generate(c_f)
+        assert c_r["play_discipline"] > pg_r["play_discipline"]
+
+    def test_no_driving_dribble_move_clamped(self, formula):
+        """no_driving_dribble_move must be in [15, 75] for all positions."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            val = result["no_driving_dribble_move"]
+            assert 15.0 <= val <= 75.0, f"{pos}: no_driving_dribble_move={val}"
+
+    def test_all_values_non_negative_after_fixes(self, formula):
+        """All tendency values must remain non-negative after bug fixes."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            for k, v in result.items():
+                assert v >= 0.0, f"{pos} {k} = {v} is negative"
+
+    def test_all_registry_tendencies_produced_after_fixes(self, formula):
+        """All 99 registry tendencies must still be produced after bug fixes."""
+        result = formula.generate(_minimal_features())
+        registry_names = _all_registry_names()
+        for name in registry_names:
+            assert name in result, f"Missing tendency: {name}"
