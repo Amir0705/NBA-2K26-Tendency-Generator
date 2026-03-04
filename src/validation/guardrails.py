@@ -65,12 +65,12 @@ class Guardrails:
                 f"within 15 of {shot_mid:.1f}",
             )
 
-        # 4. If Post Up < 10, post hooks should be <= 5
+        # 4. If Post Up < 10, post hooks must be 0
         post_up = tendencies.get("post_up", 0)
         if post_up < 10:
             for hook in ("post_hook_left", "post_hook_right"):
-                if tendencies.get(hook, 0) > 5:
-                    _fix(hook, 5.0, "post_up < 10 → hooks <= 5", "<= 5")
+                if tendencies.get(hook, 0) > 0:
+                    _fix(hook, 0.0, "post_up < 10 → post hooks = 0", "= 0")
 
         # 5. Stepback Three <= Stepback Mid + 5
         sb_three = tendencies.get("stepback_jumper_three", 0)
@@ -83,7 +83,50 @@ class Guardrails:
                 f"<= {sb_mid + 5:.1f}",
             )
 
-        # 6. Sub-zone families should sum between 80 and 120
+        # 6a. No Setup Dribble absolute cap 35
+        no_setup = tendencies.get("no_setup_dribble", 0)
+        if no_setup > 35:
+            _fix("no_setup_dribble", 35.0, "no_setup_dribble absolute cap 35", "<= 35")
+
+        # 6b. Roll vs Pop: avoid 0/100 extremes (5–95)
+        roll_pop = tendencies.get("roll_vs_pop", 50)
+        if roll_pop < 5:
+            _fix("roll_vs_pop", 5.0, "roll_vs_pop avoid extreme low", ">= 5")
+        elif roll_pop > 95:
+            _fix("roll_vs_pop", 95.0, "roll_vs_pop avoid extreme high", "<= 95")
+
+        # 6c. Spot-Up Three should not exceed Shot Three + 10
+        spot_up_three = tendencies.get("spot_up_shot_three", 0)
+        shot_three = tendencies.get("shot_three", 0)
+        if spot_up_three > shot_three + 10:
+            _fix(
+                "spot_up_shot_three",
+                shot_three + 10.0,
+                "spot_up_shot_three <= shot_three + 10",
+                f"<= {shot_three + 10}",
+            )
+
+        # 6d. Off-Screen Three <= Shot Three
+        off_screen_three = tendencies.get("off_screen_shot_three", 0)
+        if off_screen_three > shot_three:
+            _fix(
+                "off_screen_shot_three",
+                float(shot_three),
+                "off_screen_shot_three <= shot_three",
+                f"<= {shot_three}",
+            )
+
+        # 6e. Contested Jumper Three <= Shot Three
+        contested_three = tendencies.get("contested_jumper_three", 0)
+        if contested_three > shot_three:
+            _fix(
+                "contested_jumper_three",
+                float(shot_three),
+                "contested_jumper_three <= shot_three",
+                f"<= {shot_three}",
+            )
+
+        # 7. Sub-zone families should sum between 80 and 120
         sub_zone_families = [
             (
                 ["shot_close_left", "shot_close_middle", "shot_close_right"],

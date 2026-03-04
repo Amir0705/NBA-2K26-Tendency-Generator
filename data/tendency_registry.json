@@ -813,7 +813,7 @@
     "primjer_label": "Attack Strong On Drive",
     "offset": 1109,
     "bit_offset": 6,
-    "hard_cap": 60,
+    "hard_cap": 65,
     "category": "driving",
     "parent_tendency": null,
     "is_sub_zone": false
@@ -1112,7 +1112,7 @@
     "primjer_label": "Roll vs. Pop",
     "offset": 1113,
     "bit_offset": 6,
-    "hard_cap": 85,
+    "hard_cap": 75,
     "category": "playstyle",
     "parent_tendency": null,
     "is_sub_zone": false
