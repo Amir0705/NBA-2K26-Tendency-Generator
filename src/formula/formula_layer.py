@@ -51,6 +51,24 @@ class FormulaLayer:
         pf_p36 = f.get("pf_per36", 2.5)
         oreb_pct = f.get("oreb_pct_proxy", 0.1)
 
+        # Age/experience factors
+        age = f.get("age", 27.0)
+        season_exp = f.get("season_exp", 4)
+        vet_factor = scale(season_exp, [0, 15], [0.8, 1.2])
+        youth_factor = scale(age, [19, 38], [1.2, 0.8])
+
+        # Efficiency factors
+        fg3_pct = f.get("fg3_pct", 0.33)
+        fg_pct = f.get("fg_pct", 0.45)
+        ts_pct = f.get("ts_pct", 0.55)
+        three_efficiency = scale(fg3_pct, [0.25, 0.42], [0.85, 1.15])
+        mid_efficiency = scale(fg_pct, [0.38, 0.52], [0.85, 1.15])
+        overall_efficiency = scale(ts_pct, [0.50, 0.62], [0.9, 1.1])
+
+        # Team context factor
+        pctile_pts = f.get("pctile_pts", 0.5)
+        team_role_factor = scale(pctile_pts, [0.2, 0.8], [0.8, 1.2])
+
         # Zone rates
         zra = f.get("zone_fga_rate_ra", 0.1)
         zpaint = f.get("zone_fga_rate_paint", 0.1)
@@ -78,58 +96,60 @@ class FormulaLayer:
             0.6 * scale(usg, [0.10, 0.35], [20, 75])
             + 0.4 * scale(fga_p36, [3, 25], [15, 75])
         ) * shooting_skill
-        t["shot"] = min(shot, 75.0)
+        t["shot"] = min(shot * overall_efficiency, 75.0)
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
         t["shot_close"] = scale(zpaint, [0.0, 0.3], [0, 60])
 
         shot_mid_range = scale(zmid_total, [0.0, 0.35], [0, 55])
-        t["shot_mid_range"] = shot_mid_range
+        t["shot_mid_range"] = shot_mid_range * mid_efficiency
 
-        t["spot_up_shot_mid_range"] = shot_mid_range * 0.7
-        t["off_screen_shot_mid_range"] = shot_mid_range * 0.6
+        t["spot_up_shot_mid_range"] = shot_mid_range * 0.7 * mid_efficiency
+        t["off_screen_shot_mid_range"] = shot_mid_range * 0.6 * mid_efficiency
 
         shot_three = scale(fg3a_rate, [0.0, 0.55], [0, 60])
-        t["shot_three"] = shot_three
+        t["shot_three"] = shot_three * three_efficiency
 
         # ---------------------------------------------------------------
         # Category B: Three-Point Subtypes
         # ---------------------------------------------------------------
-        t["spot_up_shot_three"] = shot_three * 0.85
-        t["off_screen_shot_three"] = shot_three * 0.65
+        t["spot_up_shot_three"] = shot_three * 0.85 * three_efficiency * team_role_factor
+        t["off_screen_shot_three"] = shot_three * 0.65 * three_efficiency
         t["transition_pull_up_three"] = (
             scale(fg3a_rate, [0.15, 0.45], [0, 30])
             * scale(pts_p36, [10, 30], [0.5, 1.2])
             * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
+            * three_efficiency
+            * youth_factor
         )
 
         # ---------------------------------------------------------------
         # Category C: Contested / Advanced Shooting
         # ---------------------------------------------------------------
-        t["contested_jumper_mid_range"] = shot_mid_range * 0.55
-        t["contested_jumper_three"] = shot_three * 0.35
-        t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost
+        t["contested_jumper_mid_range"] = shot_mid_range * 0.55 * mid_efficiency
+        t["contested_jumper_three"] = shot_three * 0.35 * three_efficiency
+        t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost * mid_efficiency
         t["stepback_jumper_three"] = (
             scale(shot_three, [0, 60], [0, 30]) * dribble_boost
             + scale(fg3a_rate, [0.3, 0.6], [0, 10])
-        )
+        ) * three_efficiency
         t["spin_jumper"] = scale(shot_mid_range, [0, 55], [0, 15]) * dribble_boost
 
         # ---------------------------------------------------------------
         # Category D: Pull-Up Shooting
         # ---------------------------------------------------------------
-        t["drive_pull_up_mid_range"] = scale(shot_mid_range, [0, 55], [0, 40]) * dribble_boost
-        t["drive_pull_up_three"] = scale(fg3a_rate, [0.0, 0.4], [0, 25]) * dribble_boost
+        t["drive_pull_up_mid_range"] = scale(shot_mid_range, [0, 55], [0, 40]) * dribble_boost * mid_efficiency
+        t["drive_pull_up_three"] = scale(fg3a_rate, [0.0, 0.4], [0, 25]) * dribble_boost * three_efficiency
 
         # ---------------------------------------------------------------
         # Category E: Finishing
         # ---------------------------------------------------------------
         t["driving_layup"] = scale(zra + zpaint, [0.1, 0.6], [30, 85])
         t["standing_dunk"] = post_factor * scale(zra, [0.05, 0.4], [0, 60]) * (0.5 + 0.5 * drive_boost)
-        t["driving_dunk"] = scale(zra, [0.05, 0.4], [0, 50]) * drive_boost
+        t["driving_dunk"] = scale(zra, [0.05, 0.4], [0, 50]) * drive_boost * youth_factor
         flashy_factor = {"PG": 0.6, "SG": 0.5, "SF": 0.5, "PF": 0.45, "C": 0.15}
         t["flashy_dunk"] = t["driving_dunk"] * flashy_factor.get(pos, 0.5) * drive_boost
-        t["alley_oop"] = scale(zra, [0.05, 0.35], [5, 45]) * (0.4 * post_factor + 0.6 * drive_boost)
+        t["alley_oop"] = scale(zra, [0.05, 0.35], [5, 45]) * (0.4 * post_factor + 0.6 * drive_boost) * youth_factor
         t["putback"] = scale(oreb_pct, [0.0, 0.3], [5, 50]) * (0.6 * post_factor + 0.4 * drive_boost)
         t["use_glass"] = scale(zpaint + zra, [0.1, 0.5], [10, 45])
         t["step_through_shot"] = scale(zpaint, [0.0, 0.25], [0, 30]) * post_factor
@@ -159,8 +179,8 @@ class FormulaLayer:
             drive = 0.6 * zone_drive + 0.4 * creation_drive
         else:
             drive = zone_drive * drive_boost  # Bigs: pure zone-based
-        t["drive"] = drive
-        t["spot_up_drive"] = drive * 0.7
+        t["drive"] = drive * team_role_factor
+        t["spot_up_drive"] = drive * 0.7 * team_role_factor
         t["off_screen_drive"] = drive * 0.5
         t["drive_right"] = f.get("drive_right_bias", 50.0)
 
@@ -169,13 +189,16 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         t["triple_threat_pump_fake"] = scale(shot_mid_range + shot_three, [0, 100], [10, 45])
         t["triple_threat_jab_step"] = scale(drive, [0, 60], [10, 40])
-        t["triple_threat_idle"] = 20.0
+        t["triple_threat_idle"] = max(
+            35 - scale(usg, [0.10, 0.30], [0, 20]) - scale(fga_p36, [5, 20], [0, 10]),
+            0.0,
+        )
         t["triple_threat_shoot"] = scale(shot_three + shot_mid_range, [0, 100], [10, 45])
 
         # ---------------------------------------------------------------
         # Category J: Dribble Setup
         # ---------------------------------------------------------------
-        t["setup_with_sizeup"] = scale(usg, [0.10, 0.30], [10, 45]) * dribble_boost
+        t["setup_with_sizeup"] = scale(usg, [0.10, 0.30], [10, 45]) * dribble_boost * vet_factor
         t["setup_with_hesitation"] = t["setup_with_sizeup"] * 0.9
         t["no_setup_dribble"] = 35 - scale(usg, [0.10, 0.30], [0, 20])
 
@@ -215,23 +238,23 @@ class FormulaLayer:
         post_score = (
             scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
         )
-        t["post_up"] = post_score * 1.0
-        t["post_shimmy_shot"] = post_score * 0.3
-        t["post_face_up"] = post_score * 0.7
-        t["post_back_down"] = post_score * 0.6
-        t["post_aggressive_backdown"] = post_score * 0.4
-        t["shoot_from_post"] = post_score * 0.8
-        t["post_hook_left"] = post_score * 0.2
-        t["post_hook_right"] = post_score * 0.2
-        t["post_fade_left"] = post_score * 0.25
-        t["post_fade_right"] = post_score * 0.25
-        t["post_up_and_under"] = post_score * 0.4
-        t["post_hop_shot"] = post_score * 0.35
-        t["post_step_back_shot"] = post_score * 0.35
-        t["post_drive"] = post_score * 0.65
-        t["post_spin"] = post_score * 0.4
-        t["post_drop_step"] = post_score * 0.4
-        t["post_hop_step"] = post_score * 0.3
+        t["post_up"] = post_score * 1.0 * vet_factor
+        t["post_shimmy_shot"] = post_score * 0.3 * vet_factor
+        t["post_face_up"] = post_score * 0.7 * vet_factor
+        t["post_back_down"] = post_score * 0.6 * vet_factor
+        t["post_aggressive_backdown"] = post_score * 0.4 * vet_factor
+        t["shoot_from_post"] = post_score * 0.8 * vet_factor
+        t["post_hook_left"] = post_score * 0.2 * vet_factor
+        t["post_hook_right"] = post_score * 0.2 * vet_factor
+        t["post_fade_left"] = post_score * 0.25 * vet_factor
+        t["post_fade_right"] = post_score * 0.25 * vet_factor
+        t["post_up_and_under"] = post_score * 0.4 * vet_factor
+        t["post_hop_shot"] = post_score * 0.35 * vet_factor
+        t["post_step_back_shot"] = post_score * 0.35 * vet_factor
+        t["post_drive"] = post_score * 0.65 * vet_factor
+        t["post_spin"] = post_score * 0.4 * vet_factor
+        t["post_drop_step"] = post_score * 0.4 * vet_factor
+        t["post_hop_step"] = post_score * 0.3 * vet_factor
 
         # ---------------------------------------------------------------
         # Category O: Playstyle Sliders
@@ -240,23 +263,23 @@ class FormulaLayer:
             t["roll_vs_pop"] = 50.0
         else:
             t["roll_vs_pop"] = 75 - scale(fg3a_rate, [0.0, 0.3], [0, 50])
-        t["transition_spot_up"] = scale(fg3a_rate, [0.0, 0.4], [30, 70])
+        t["transition_spot_up"] = scale(fg3a_rate, [0.0, 0.4], [30, 70]) * team_role_factor
 
         # ---------------------------------------------------------------
         # Category P: Isolation
         # ---------------------------------------------------------------
         iso_base = scale(usg, [0.10, 0.32], [0, 40]) * dribble_boost
-        t["iso_vs_elite_defender"] = iso_base * 0.5
-        t["iso_vs_good_defender"] = iso_base * 0.7
-        t["iso_vs_average_defender"] = iso_base * 0.85
-        t["iso_vs_poor_defender"] = iso_base * 1.0
+        t["iso_vs_elite_defender"] = iso_base * 0.5 * team_role_factor
+        t["iso_vs_good_defender"] = iso_base * 0.7 * team_role_factor
+        t["iso_vs_average_defender"] = iso_base * 0.85 * team_role_factor
+        t["iso_vs_poor_defender"] = iso_base * 1.0 * team_role_factor
 
         # ---------------------------------------------------------------
         # Category Q: Discipline
         # ---------------------------------------------------------------
         pos_discipline = {"PG": -5, "SG": 0, "SF": 0, "PF": 5, "C": 10}
         play_discipline = 60 - scale(usg, [0.10, 0.35], [0, 30]) + pos_discipline.get(pos, 0)
-        t["play_discipline"] = max(play_discipline, 35.0)
+        t["play_discipline"] = max(play_discipline, 35.0) * vet_factor
 
         # ---------------------------------------------------------------
         # Category R: Defense

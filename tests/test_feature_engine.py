@@ -21,6 +21,9 @@ class MockNBAClient:
             "weight": "195",
             "team_id": 1610612749,
             "team_abbreviation": "MIL",
+            "birthdate": "1984-12-30",
+            "from_year": "2003",
+            "season_exp": 21,
         }
 
     def get_player_stats(self, player_id: int, season: str = "2024-25") -> dict:

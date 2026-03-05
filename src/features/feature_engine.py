@@ -1,6 +1,7 @@
 """Feature engineering: transforms raw NBA stats into a feature vector."""
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 from src.features.shot_zones import ShotZoneAnalyzer, ZONES
@@ -88,6 +89,17 @@ class FeatureEngine:
         height_inches = _height_to_inches(info.get("height", ""))
         weight_lbs = int(info.get("weight") or 0)
 
+        # --- Age and experience ---
+        birthdate_str = info.get("birthdate", "")
+        try:
+            bd = datetime.datetime.strptime(birthdate_str[:10], "%Y-%m-%d")
+            age = (datetime.datetime.now() - bd).days / 365.25
+        except (ValueError, TypeError):
+            age = 27.0  # league average fallback
+
+        season_exp = int(info.get("season_exp", 0))
+        drive_right_bias = 50.0  # default; feature exists so formula can read it
+
         # --- Volume stats (per game) ---
         gp = int(stats.get("gp", 0))
         min_pg = float(stats.get("min", 0.0))
@@ -174,6 +186,10 @@ class FeatureEngine:
             "position": position,
             "height_inches": height_inches,
             "weight_lbs": weight_lbs,
+            # Age and experience
+            "age": age,
+            "season_exp": season_exp,
+            "drive_right_bias": drive_right_bias,
             # Volume stats
             "pts_per_game": pts_pg,
             "fga_per_game": fga_pg,

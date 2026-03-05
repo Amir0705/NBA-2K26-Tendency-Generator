@@ -77,6 +77,9 @@ class NBAApiClient:
             "weight": row.get("WEIGHT", ""),
             "team_id": row.get("TEAM_ID"),
             "team_abbreviation": row.get("TEAM_ABBREVIATION", ""),
+            "birthdate": row.get("BIRTHDATE", ""),
+            "from_year": row.get("FROM_YEAR", ""),
+            "season_exp": int(row.get("SEASON_EXP", 0)),
         }
         self._cache_set(cache_key, result)
         return result

@@ -31,6 +31,14 @@ def _minimal_features(position: str = "SG") -> dict:
         "blk_per36": 0.4,
         "pf_per36": 2.5,
         "oreb_pct_proxy": 0.10,
+        "age": 27.0,
+        "season_exp": 5,
+        "fg3_pct": 0.36,
+        "fg_pct": 0.46,
+        "ts_pct": 0.57,
+        "efg_pct": 0.52,
+        "drive_right_bias": 50.0,
+        "pctile_pts": 0.5,
         "zone_fga_rate_ra": 0.20,
         "zone_fga_rate_paint": 0.15,
         "zone_fga_rate_mid_left": 0.08,
@@ -373,3 +381,55 @@ class TestFormulaBugFixes:
         registry_names = _all_registry_names()
         for name in registry_names:
             assert name in result, f"Missing tendency: {name}"
+
+
+class TestTuningGaps:
+    """Tests for the 5 tuning gap fixes."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    def test_veteran_has_higher_post_up_than_rookie(self, formula):
+        """A veteran (season_exp=15) should produce higher post_up than a rookie (season_exp=0)."""
+        vet_f = dict(_minimal_features("PF"), season_exp=15)
+        rookie_f = dict(_minimal_features("PF"), season_exp=0)
+        vet_r = formula.generate(vet_f)
+        rookie_r = formula.generate(rookie_f)
+        assert vet_r["post_up"] > rookie_r["post_up"]
+
+    def test_good_three_shooter_has_higher_shot_three(self, formula):
+        """A good 3pt shooter (fg3_pct=0.40) produces higher shot_three than poor (fg3_pct=0.28)."""
+        good_f = dict(_minimal_features(), fg3_pct=0.40)
+        poor_f = dict(_minimal_features(), fg3_pct=0.28)
+        good_r = formula.generate(good_f)
+        poor_r = formula.generate(poor_f)
+        assert good_r["shot_three"] > poor_r["shot_three"]
+
+    def test_triple_threat_idle_varies_with_usage(self, formula):
+        """High usage player should have lower triple_threat_idle than low usage player."""
+        high_usg_f = dict(_minimal_features(), usg_pct_proxy=0.30, fga_per36=20.0)
+        low_usg_f = dict(_minimal_features(), usg_pct_proxy=0.12, fga_per36=6.0)
+        high_r = formula.generate(high_usg_f)
+        low_r = formula.generate(low_usg_f)
+        assert high_r["triple_threat_idle"] < low_r["triple_threat_idle"]
+
+    def test_triple_threat_idle_non_negative(self, formula):
+        """triple_threat_idle must always be non-negative."""
+        extreme_f = dict(_minimal_features(), usg_pct_proxy=0.40, fga_per36=30.0)
+        result = formula.generate(extreme_f)
+        assert result["triple_threat_idle"] >= 0.0
+
+    def test_drive_right_reads_from_feature_dict(self, formula):
+        """drive_right should read from drive_right_bias feature dict key."""
+        f = dict(_minimal_features(), drive_right_bias=65.0)
+        result = formula.generate(f)
+        assert result["drive_right"] == pytest.approx(65.0)
+
+    def test_team_role_factor_affects_iso(self, formula):
+        """High-scoring player (pctile_pts=0.9) should have higher iso tendencies than low scorer."""
+        star_f = dict(_minimal_features(), pctile_pts=0.9)
+        bench_f = dict(_minimal_features(), pctile_pts=0.1)
+        star_r = formula.generate(star_f)
+        bench_r = formula.generate(bench_f)
+        assert star_r["iso_vs_poor_defender"] > bench_r["iso_vs_poor_defender"]
