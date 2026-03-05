@@ -93,7 +93,15 @@
           <button class="btn btn-sm" id="dlJsonBtn">📥 JSON</button>
           <button class="btn btn-sm" id="dlCsvBtn">📥 CSV</button>
           <button class="btn btn-sm" id="dlExcelBtn">📥 Excel</button>
+          <button class="btn btn-sm" id="showLogBtn">📊 Show Log</button>
         </div>
+      </div>
+      <div id="logPanel" class="log-panel" hidden>
+        <div class="log-header">
+          <span class="log-title">📊 Data Source Log</span>
+          <button class="btn btn-sm" id="copyLogBtn">📋 Copy Log</button>
+        </div>
+        <pre id="logContent" class="log-content"></pre>
       </div>
       <div id="tendenciesContainer"></div>
     </section>

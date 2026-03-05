@@ -49,6 +49,10 @@ const copyJsonBtn     = document.getElementById("copyJsonBtn");
 const dlJsonBtn       = document.getElementById("dlJsonBtn");
 const dlCsvBtn        = document.getElementById("dlCsvBtn");
 const dlExcelBtn      = document.getElementById("dlExcelBtn");
+const showLogBtn      = document.getElementById("showLogBtn");
+const logPanel        = document.getElementById("logPanel");
+const logContent      = document.getElementById("logContent");
+const copyLogBtn      = document.getElementById("copyLogBtn");
 
 // ── Utilities ─────────────────────────────────────────────────────────────
 function showSpinner(text = "Loading…") {
@@ -132,6 +136,10 @@ async function generatePlayer(playerName) {
     // Merge category into each tendency entry by fetching from API tendencies keys
     // The API already has label per tendency; we need category — fetch registry lazily
     _currentPlayerData = data;
+
+    // Reset log panel for new generation
+    if (logPanel) logPanel.hidden = true;
+    if (showLogBtn) showLogBtn.textContent = "📊 Show Log";
 
     playerNameEl.textContent = data.player_name;
     playerMetaEl.textContent = [data.position, data.team, data.season]
@@ -248,6 +256,75 @@ dlExcelBtn.addEventListener("click", () => {
   if (!_currentPlayerData) return;
   const season = seasonSelect.value;
   window.location.href = `/export/excel/${encodeURIComponent(_currentPlayerData.player_name)}?season=${season}`;
+});
+
+// ── Log panel ──────────────────────────────────────────────────────────────
+const LOG_LABEL_WIDTH = 26;
+
+function buildLogText(data) {
+  const status = data.tracking_data_status || {};
+  const name = data.player_name || "Unknown";
+  const season = data.season || "";
+  const position = data.position || "";
+  const team = data.team || "";
+
+  const sources = [
+    { label: "Play Types (Synergy)", key: "play_types_available" },
+    { label: "Tracking Shots",       key: "tracking_shots_available" },
+    { label: "Hustle Stats",         key: "hustle_available" },
+    { label: "Passing Tracking",     key: "passing_available" },
+  ];
+
+  const lines = [];
+  lines.push("═══════════════════════════════════════════");
+  lines.push(`  DATA SOURCE LOG — ${name}`);
+  lines.push(`  Season: ${season} | Position: ${position} | Team: ${team}`);
+  lines.push("═══════════════════════════════════════════");
+  lines.push("");
+
+  let available = 0;
+  for (const s of sources) {
+    const ok = status[s.key] === true;
+    if (ok) available++;
+    const icon = ok ? "✅" : "❌";
+    const statusText = ok ? "Available" : "Unavailable";
+    const paddedLabel = s.label.padEnd(LOG_LABEL_WIDTH);
+    lines.push(`  ${icon} ${paddedLabel} — ${statusText}`);
+  }
+
+  lines.push("");
+  lines.push("───────────────────────────────────────────");
+  lines.push(`  ${available} of ${sources.length} data sources available`);
+  if (available < sources.length) {
+    lines.push("  Note: Unavailable sources use proxy formulas");
+  }
+  lines.push("═══════════════════════════════════════════");
+
+  return lines.join("\n");
+}
+
+showLogBtn.addEventListener("click", () => {
+  if (logPanel.hidden) {
+    if (_currentPlayerData) {
+      logContent.textContent = buildLogText(_currentPlayerData);
+    }
+    logPanel.hidden = false;
+    showLogBtn.textContent = "📊 Hide Log";
+  } else {
+    logPanel.hidden = true;
+    showLogBtn.textContent = "📊 Show Log";
+  }
+});
+
+copyLogBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(logContent.textContent);
+    copyLogBtn.textContent = "✅ Copied!";
+    setTimeout(() => { copyLogBtn.textContent = "📋 Copy Log"; }, 2000);
+  } catch {
+    copyLogBtn.textContent = "❌ Failed";
+    setTimeout(() => { copyLogBtn.textContent = "📋 Copy Log"; }, 2000);
+  }
 });
 
 // ── Search / Autocomplete ──────────────────────────────────────────────────
