@@ -1,9 +1,12 @@
 """Feature engineering: transforms raw NBA stats into a feature vector."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from src.features.shot_zones import ShotZoneAnalyzer, ZONES
+
+logger = logging.getLogger(__name__)
 
 # Position one-hot keys
 _POSITIONS = ("PG", "SG", "SF", "PF", "C")
@@ -86,19 +89,27 @@ class FeatureEngine:
         # Fetch tracking data — graceful degradation on failure
         try:
             play_types = self._client.get_play_types(player_id, season=season)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("play_types tracking data failed for player_id=%s: %s: %s",
+                           player_id, type(exc).__name__, exc)
             play_types = {}
         try:
             tracking_shots = self._client.get_tracking_shots(player_id, season=season)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("tracking_shots data failed for player_id=%s: %s: %s",
+                           player_id, type(exc).__name__, exc)
             tracking_shots = {}
         try:
             hustle = self._client.get_hustle_stats(player_id, season=season)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("hustle_stats data failed for player_id=%s: %s: %s",
+                           player_id, type(exc).__name__, exc)
             hustle = {}
         try:
             passing = self._client.get_passing_tracking(player_id, season=season)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("passing_tracking data failed for player_id=%s: %s: %s",
+                           player_id, type(exc).__name__, exc)
             passing = {}
 
         # --- Player info ---

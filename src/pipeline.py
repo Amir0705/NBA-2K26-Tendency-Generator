@@ -145,6 +145,12 @@ class TendencyPipeline:
                 for k, v in features.items()
                 if not isinstance(v, dict)
             },
+            "tracking_data_status": {
+                "play_types_available": features.get("playtype_iso_freq", -1) >= 0,
+                "tracking_shots_available": features.get("tracking_catch_shoot_fga_pct", -1) >= 0,
+                "hustle_available": features.get("hustle_deflections_pg", -1) >= 0,
+                "passing_available": features.get("tracking_potential_ast_pg", -1) >= 0,
+            },
         }
         if errors:
             result["errors"] = errors
