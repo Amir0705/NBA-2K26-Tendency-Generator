@@ -1,10 +1,13 @@
 """NBA Stats API client using the nba_api library."""
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 from src.ingest.cache import Cache
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_response(endpoint_obj: Any, result_set_index: int = 0) -> list[dict]:
@@ -291,7 +294,9 @@ class NBAApiClient:
 
             self._cache_set(cache_key, result)
             return result
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SynergyPlayTypes failed for player_id=%s season=%s: %s: %s",
+                           player_id, season, type(exc).__name__, exc)
             return {}
 
     def get_tracking_shots(
@@ -363,7 +368,9 @@ class NBAApiClient:
             }
             self._cache_set(cache_key, result)
             return result
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("PlayerDashPtShots failed for player_id=%s season=%s: %s: %s",
+                           player_id, season, type(exc).__name__, exc)
             return {}
 
     def get_hustle_stats(
@@ -417,7 +424,9 @@ class NBAApiClient:
             }
             self._cache_set(cache_key, result)
             return result
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("LeagueHustleStatsPlayer failed for player_id=%s season=%s: %s: %s",
+                           player_id, season, type(exc).__name__, exc)
             return {}
 
     def get_passing_tracking(
@@ -468,7 +477,9 @@ class NBAApiClient:
             }
             self._cache_set(cache_key, result)
             return result
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("PlayerDashPtPass failed for player_id=%s season=%s: %s: %s",
+                           player_id, season, type(exc).__name__, exc)
             return {}
 
     # ------------------------------------------------------------------

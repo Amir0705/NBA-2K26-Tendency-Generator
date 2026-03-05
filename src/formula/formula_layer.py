@@ -1,7 +1,10 @@
 """Formula layer: maps feature vectors to all 99 tendency values."""
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def scale(value: float, input_range: list, output_range: list) -> float:
@@ -56,6 +59,11 @@ class FormulaLayer:
         has_tracking_shots = f.get("tracking_catch_shoot_fga_pct", -1) >= 0
         has_hustle = f.get("hustle_deflections_pg", -1) >= 0
         has_passing = f.get("tracking_potential_ast_pg", -1) >= 0
+
+        logger.debug(
+            "FormulaLayer flags: has_tracking=%s, has_tracking_shots=%s, has_hustle=%s, has_passing=%s",
+            has_tracking, has_tracking_shots, has_hustle, has_passing,
+        )
 
         # Zone rates
         zra = f.get("zone_fga_rate_ra", 0.1)
