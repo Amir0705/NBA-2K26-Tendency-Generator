@@ -203,6 +203,26 @@ class TendencyPipeline:
                 "right_center": 20.0,
                 "right": 20.0,
             },
+            # Tracking data unavailable — use -1 sentinel
+            "playtype_iso_freq": -1.0,
+            "playtype_pnr_ball_freq": -1.0,
+            "playtype_pnr_roll_freq": -1.0,
+            "playtype_post_up_freq": -1.0,
+            "playtype_spot_up_freq": -1.0,
+            "playtype_cut_freq": -1.0,
+            "playtype_transition_freq": -1.0,
+            "playtype_handoff_freq": -1.0,
+            "tracking_catch_shoot_fga_pct": -1.0,
+            "tracking_pull_up_fga_pct": -1.0,
+            "tracking_avg_dribbles_before_shot": -1.0,
+            "hustle_deflections_pg": -1.0,
+            "hustle_contested_shots_pg": -1.0,
+            "hustle_charges_drawn_pg": -1.0,
+            "hustle_screen_assists_pg": -1.0,
+            "hustle_loose_balls_pg": -1.0,
+            "tracking_potential_ast_pg": -1.0,
+            "tracking_passes_made_pg": -1.0,
+            "tracking_ast_to_pass_pct": -1.0,
         }
 
     def generate_json(self, player_id: int, season: str = "2024-25") -> str:

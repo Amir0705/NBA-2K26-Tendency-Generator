@@ -238,6 +238,239 @@ class NBAApiClient:
         self._cache_set(cache_key, rows, ttl_seconds=604800)  # 1 week
         return rows  # type: ignore[return-value]
 
+    def get_play_types(
+        self, player_id: int, season: str = "2024-25"
+    ) -> dict[str, Any]:
+        """
+        Return play-type frequency and PPP data for *player_id* using SynergyPlayTypes.
+
+        Keys returned (all float, 0.0 on failure):
+            iso_freq, pnr_ball_freq, pnr_roll_freq, post_up_freq,
+            spot_up_freq, handoff_freq, cut_freq, off_screen_freq,
+            transition_freq, putback_freq
+        """
+        cache_key = f"play_types:{player_id}:{season}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            from nba_api.stats.endpoints import SynergyPlayTypes  # noqa: PLC0415
+
+            play_type_map = {
+                "Isolation": "iso_freq",
+                "PRBallHandler": "pnr_ball_freq",
+                "PRRollman": "pnr_roll_freq",
+                "Postup": "post_up_freq",
+                "Spotup": "spot_up_freq",
+                "Handoff": "handoff_freq",
+                "Cut": "cut_freq",
+                "OffScreen": "off_screen_freq",
+                "Transition": "transition_freq",
+                "OffRebound": "putback_freq",
+            }
+            result: dict[str, float] = {v: 0.0 for v in play_type_map.values()}
+
+            for play_type in play_type_map:
+                def _call(pt: str = play_type) -> Any:
+                    self._rate_limit()
+                    return SynergyPlayTypes(
+                        player_id=player_id,
+                        play_type_nullable=pt,
+                        type_grouping_nullable="offensive",
+                        per_mode_simple="PerGame",
+                        season_year=season,
+                        timeout=30,
+                    )
+
+                endpoint = self._with_retry(_call, endpoint_name=f"SynergyPlayTypes({play_type})")
+                rows = _parse_response(endpoint, 0)
+                if rows:
+                    freq_pct = float(rows[0].get("POSS_PCT", 0.0) or 0.0)
+                    result[play_type_map[play_type]] = freq_pct
+
+            self._cache_set(cache_key, result)
+            return result
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def get_tracking_shots(
+        self, player_id: int, season: str = "2024-25"
+    ) -> dict[str, Any]:
+        """
+        Return shot-tracking breakdown for *player_id* using PlayerDashPtShots.
+
+        Keys returned (all float, 0.0 on failure):
+            catch_shoot_fga, pull_up_fga, total_tracked_fga,
+            avg_dribbles_before_shot
+        """
+        cache_key = f"tracking_shots:{player_id}:{season}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            from nba_api.stats.endpoints import PlayerDashPtShots  # noqa: PLC0415
+
+            def _call() -> Any:
+                self._rate_limit()
+                return PlayerDashPtShots(
+                    player_id=player_id,
+                    season=season,
+                    per_mode_simple="Totals",
+                    timeout=30,
+                )
+
+            endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtShots")
+            # result set 0 = GeneralShooting (dribble breakdown)
+            dribble_rows = _parse_response(endpoint, 0)
+
+            catch_shoot_fga = 0.0
+            pull_up_fga = 0.0
+            total_drib_fga = 0.0
+            weighted_drib_sum = 0.0
+
+            dribble_count_map = {
+                "0 Dribbles": 0.0,
+                "1 Dribble": 1.0,
+                "2 Dribbles": 2.0,
+                "3-6 Dribbles": 4.5,
+                "7+ Dribbles": 8.0,
+            }
+
+            for row in dribble_rows:
+                drib_label = str(row.get("DRIBBLE_RANGE", "") or "")
+                fga = float(row.get("FGA", 0) or 0)
+                drib_value = dribble_count_map.get(drib_label, -1.0)
+                if drib_value < 0:
+                    continue
+                total_drib_fga += fga
+                weighted_drib_sum += fga * drib_value
+                if drib_value == 0.0:
+                    catch_shoot_fga += fga
+                elif drib_value >= 1.0:
+                    pull_up_fga += fga
+
+            avg_dribbles = (
+                weighted_drib_sum / total_drib_fga if total_drib_fga > 0 else 0.0
+            )
+
+            result = {
+                "catch_shoot_fga": catch_shoot_fga,
+                "pull_up_fga": pull_up_fga,
+                "total_tracked_fga": total_drib_fga,
+                "avg_dribbles_before_shot": avg_dribbles,
+            }
+            self._cache_set(cache_key, result)
+            return result
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def get_hustle_stats(
+        self, player_id: int, season: str = "2024-25"
+    ) -> dict[str, Any]:
+        """
+        Return hustle stats for *player_id* using LeagueHustleStatsPlayer.
+
+        Keys returned (all float, 0.0 on failure):
+            deflections, contested_shots_2pt, contested_shots_3pt,
+            charges_drawn, loose_balls_recovered, screen_assists, gp
+        """
+        cache_key = f"hustle_stats:{player_id}:{season}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            from nba_api.stats.endpoints import LeagueHustleStatsPlayer  # noqa: PLC0415
+
+            def _call() -> Any:
+                self._rate_limit()
+                return LeagueHustleStatsPlayer(
+                    season=season,
+                    per_mode_time="PerGame",
+                    timeout=30,
+                )
+
+            endpoint = self._with_retry(_call, endpoint_name="LeagueHustleStatsPlayer")
+            rows = _parse_response(endpoint, 0)
+            player_row = next(
+                (r for r in rows if r.get("PLAYER_ID") == player_id), None
+            )
+            if not player_row:
+                return {}
+
+            result = {
+                "deflections": float(player_row.get("DEFLECTIONS", 0.0) or 0.0),
+                "contested_shots_2pt": float(
+                    player_row.get("CONTESTED_SHOTS_2PT", 0.0) or 0.0
+                ),
+                "contested_shots_3pt": float(
+                    player_row.get("CONTESTED_SHOTS_3PT", 0.0) or 0.0
+                ),
+                "charges_drawn": float(player_row.get("CHARGES_DRAWN", 0.0) or 0.0),
+                "loose_balls_recovered": float(
+                    player_row.get("LOOSE_BALLS_RECOVERED", 0.0) or 0.0
+                ),
+                "screen_assists": float(player_row.get("SCREEN_ASSISTS", 0.0) or 0.0),
+                "gp": float(player_row.get("G", 0.0) or 0.0),
+            }
+            self._cache_set(cache_key, result)
+            return result
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def get_passing_tracking(
+        self, player_id: int, season: str = "2024-25"
+    ) -> dict[str, Any]:
+        """
+        Return pass-tracking data for *player_id* using PlayerDashPtPass.
+
+        Keys returned (all float, 0.0 on failure):
+            passes_made, potential_assists, ast_adjust
+        """
+        cache_key = f"passing_tracking:{player_id}:{season}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            from nba_api.stats.endpoints import PlayerDashPtPass  # noqa: PLC0415
+
+            def _call() -> Any:
+                self._rate_limit()
+                return PlayerDashPtPass(
+                    player_id=player_id,
+                    season=season,
+                    per_mode_simple="PerGame",
+                    timeout=30,
+                )
+
+            endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtPass")
+            # result set 0 = passes made
+            rows = _parse_response(endpoint, 0)
+            if not rows:
+                return {}
+
+            # Aggregate across all pass-to targets
+            passes_made = sum(float(r.get("PASSES", 0.0) or 0.0) for r in rows)
+            potential_ast = sum(
+                float(r.get("POTENTIAL_AST", 0.0) or 0.0) for r in rows
+            )
+            ast_adjust = sum(
+                float(r.get("AST_ADJ", 0.0) or 0.0) for r in rows
+            )
+
+            result = {
+                "passes_made": passes_made,
+                "potential_assists": potential_ast,
+                "ast_adjust": ast_adjust,
+            }
+            self._cache_set(cache_key, result)
+            return result
+        except Exception:  # noqa: BLE001
+            return {}
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
