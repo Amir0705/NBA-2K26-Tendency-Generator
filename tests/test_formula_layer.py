@@ -163,9 +163,14 @@ class TestFormulaLayerGenerate:
         )
         assert total == pytest.approx(100.0, abs=1.0)
 
-    def test_roll_vs_pop_guard_is_50(self, formula):
-        result = formula.generate(_minimal_features("PG"))
-        assert result["roll_vs_pop"] == pytest.approx(50.0)
+    def test_roll_vs_pop_guard_varies_with_three_point_rate(self, formula):
+        low_3pt = _minimal_features("PG")
+        low_3pt["fg3a_rate"] = 0.10
+        high_3pt = _minimal_features("PG")
+        high_3pt["fg3a_rate"] = 0.55
+        low_r = formula.generate(low_3pt)
+        high_r = formula.generate(high_3pt)
+        assert high_r["roll_vs_pop"] > low_r["roll_vs_pop"]
 
     def test_roll_vs_pop_center_above_50(self, formula):
         f = _minimal_features("C")
@@ -373,3 +378,145 @@ class TestFormulaBugFixes:
         registry_names = _all_registry_names()
         for name in registry_names:
             assert name in result, f"Missing tendency: {name}"
+
+
+class TestDifferentiationFixes:
+    """Tests verifying that hard-coded/near-constant tendencies now differentiate players."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    # --- drive_right_bias ---
+    def test_drive_right_uses_drive_right_bias_when_provided(self, formula):
+        """drive_right should reflect drive_right_bias from features, not always 50."""
+        right_heavy = _minimal_features("PG")
+        right_heavy["drive_right_bias"] = 68.0
+        left_heavy = _minimal_features("PG")
+        left_heavy["drive_right_bias"] = 32.0
+        r_right = formula.generate(right_heavy)
+        r_left = formula.generate(left_heavy)
+        assert r_right["drive_right"] == pytest.approx(68.0)
+        assert r_left["drive_right"] == pytest.approx(32.0)
+        assert r_right["drive_right"] != r_left["drive_right"]
+
+    def test_drive_right_defaults_50_when_no_bias_key(self, formula):
+        """Without drive_right_bias key, drive_right should default to 50."""
+        f = _minimal_features("SG")
+        assert "drive_right_bias" not in f
+        result = formula.generate(f)
+        assert result["drive_right"] == pytest.approx(50.0)
+
+    # --- triple_threat_idle ---
+    def test_triple_threat_idle_high_usage_lower_than_low_usage(self, formula):
+        """High-usage players should have lower triple_threat_idle."""
+        high_usg = dict(_minimal_features("PG"), usg_pct_proxy=0.33)
+        low_usg = dict(_minimal_features("PG"), usg_pct_proxy=0.12)
+        r_high = formula.generate(high_usg)
+        r_low = formula.generate(low_usg)
+        assert r_high["triple_threat_idle"] < r_low["triple_threat_idle"]
+
+    def test_triple_threat_idle_not_constant(self, formula):
+        """triple_threat_idle must not be identical for all players."""
+        pg_high = dict(_minimal_features("PG"), usg_pct_proxy=0.35)
+        pg_low = dict(_minimal_features("PG"), usg_pct_proxy=0.10)
+        assert formula.generate(pg_high)["triple_threat_idle"] != pytest.approx(
+            formula.generate(pg_low)["triple_threat_idle"]
+        )
+
+    # --- roll_vs_pop for guards ---
+    def test_roll_vs_pop_guard_shooter_pops_more(self, formula):
+        """Guard with high 3pt rate should get higher roll_vs_pop (prefer popping)."""
+        shooter = dict(_minimal_features("PG"), fg3a_rate=0.48)
+        driver = dict(_minimal_features("PG"), fg3a_rate=0.12)
+        r_shooter = formula.generate(shooter)
+        r_driver = formula.generate(driver)
+        assert r_shooter["roll_vs_pop"] > r_driver["roll_vs_pop"]
+
+    def test_roll_vs_pop_guard_not_always_50(self, formula):
+        """Guards with different 3pt rates should not all get exactly 50."""
+        extreme_shooter = dict(_minimal_features("SG"), fg3a_rate=0.55)
+        result = formula.generate(extreme_shooter)
+        assert result["roll_vs_pop"] != pytest.approx(50.0)
+
+    # --- contest_shot ---
+    def test_contest_shot_center_higher_than_pg_base(self, formula):
+        """Center should have higher contest_shot base than PG (same block/steal stats)."""
+        pg_f = _minimal_features("PG")
+        c_f = _minimal_features("C")
+        # Set same block/steal for fair comparison
+        for f in (pg_f, c_f):
+            f["blk_per36"] = 0.5
+            f["stl_per36"] = 1.0
+        r_pg = formula.generate(pg_f)
+        r_c = formula.generate(c_f)
+        assert r_c["contest_shot"] > r_pg["contest_shot"]
+
+    def test_contest_shot_scales_with_blocks_and_steals(self, formula):
+        """Player with more blocks and steals should have higher contest_shot."""
+        weak_def = dict(_minimal_features("PF"), blk_per36=0.2, stl_per36=0.4)
+        strong_def = dict(_minimal_features("PF"), blk_per36=2.0, stl_per36=1.8)
+        r_weak = formula.generate(weak_def)
+        r_strong = formula.generate(strong_def)
+        assert r_strong["contest_shot"] > r_weak["contest_shot"]
+
+    # --- hard_foul ---
+    def test_hard_foul_pg_nonzero_with_high_pf(self, formula):
+        """Physical PG (high pf_per36) should have non-negligible hard_foul."""
+        f = dict(_minimal_features("PG"), pf_per36=4.2)
+        result = formula.generate(f)
+        assert result["hard_foul"] > 3.0
+
+    def test_hard_foul_varies_with_fouls_for_guards(self, formula):
+        """hard_foul should differ between high-fouling and low-fouling guards."""
+        low_foul = dict(_minimal_features("PG"), pf_per36=1.5)
+        high_foul = dict(_minimal_features("PG"), pf_per36=4.0)
+        r_low = formula.generate(low_foul)
+        r_high = formula.generate(high_foul)
+        assert r_high["hard_foul"] > r_low["hard_foul"]
+
+    # --- step_through_shot ---
+    def test_step_through_shot_pg_nonzero_with_paint_work(self, formula):
+        """PG with paint scoring should have non-trivial step_through_shot."""
+        f = dict(_minimal_features("PG"), zone_fga_rate_paint=0.20)
+        result = formula.generate(f)
+        assert result["step_through_shot"] > 1.0
+
+    def test_step_through_shot_scales_with_paint_for_guards(self, formula):
+        """step_through_shot should grow with paint zone rate even for guards."""
+        no_paint = dict(_minimal_features("PG"), zone_fga_rate_paint=0.0)
+        heavy_paint = dict(_minimal_features("PG"), zone_fga_rate_paint=0.25)
+        r_no = formula.generate(no_paint)
+        r_heavy = formula.generate(heavy_paint)
+        assert r_heavy["step_through_shot"] > r_no["step_through_shot"]
+
+    # --- standing_dunk ---
+    def test_standing_dunk_athletic_pg_nonzero(self, formula):
+        """Rim-attacking PG should have non-trivial standing_dunk (> 3)."""
+        f = dict(_minimal_features("PG"), zone_fga_rate_ra=0.35)
+        result = formula.generate(f)
+        assert result["standing_dunk"] > 3.0
+
+    def test_standing_dunk_center_much_higher_than_pg(self, formula):
+        """Center standing_dunk should still dominate over PG standing_dunk."""
+        pg_f = dict(_minimal_features("PG"), zone_fga_rate_ra=0.30)
+        c_f = dict(_minimal_features("C"), zone_fga_rate_ra=0.30)
+        r_pg = formula.generate(pg_f)
+        r_c = formula.generate(c_f)
+        assert r_c["standing_dunk"] > r_pg["standing_dunk"]
+
+    # --- registry completeness ---
+    def test_all_99_tendencies_still_produced(self, formula):
+        """All 99 registry tendencies must be produced after differentiation fixes."""
+        result = formula.generate(_minimal_features())
+        registry_names = _all_registry_names()
+        for name in registry_names:
+            assert name in result, f"Missing: {name}"
+        assert len(registry_names) == 99
+
+    def test_all_values_non_negative_differentiation(self, formula):
+        """All tendency values must remain >= 0 for all positions after fixes."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            for k, v in result.items():
+                assert v >= 0.0, f"{pos} {k} = {v}"

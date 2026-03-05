@@ -125,14 +125,15 @@ class FormulaLayer:
         # Category E: Finishing
         # ---------------------------------------------------------------
         t["driving_layup"] = scale(zra + zpaint, [0.1, 0.6], [30, 85])
-        t["standing_dunk"] = post_factor * scale(zra, [0.05, 0.4], [0, 60]) * (0.5 + 0.5 * drive_boost)
+        standing_dunk_raw = scale(zra, [0.05, 0.4], [0, 60]) * (0.5 + 0.5 * drive_boost)
+        t["standing_dunk"] = standing_dunk_raw * (0.15 + 0.85 * post_factor)
         t["driving_dunk"] = scale(zra, [0.05, 0.4], [0, 50]) * drive_boost
         flashy_factor = {"PG": 0.6, "SG": 0.5, "SF": 0.5, "PF": 0.45, "C": 0.15}
         t["flashy_dunk"] = t["driving_dunk"] * flashy_factor.get(pos, 0.5) * drive_boost
         t["alley_oop"] = scale(zra, [0.05, 0.35], [5, 45]) * (0.4 * post_factor + 0.6 * drive_boost)
         t["putback"] = scale(oreb_pct, [0.0, 0.3], [5, 50]) * (0.6 * post_factor + 0.4 * drive_boost)
         t["use_glass"] = scale(zpaint + zra, [0.1, 0.5], [10, 45])
-        t["step_through_shot"] = scale(zpaint, [0.0, 0.25], [0, 30]) * post_factor
+        t["step_through_shot"] = scale(zpaint, [0.0, 0.25], [0, 30]) * (0.3 + 0.7 * post_factor)
 
         # ---------------------------------------------------------------
         # Category F: Craft Finishing
@@ -169,7 +170,7 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         t["triple_threat_pump_fake"] = scale(shot_mid_range + shot_three, [0, 100], [10, 45])
         t["triple_threat_jab_step"] = scale(drive, [0, 60], [10, 40])
-        t["triple_threat_idle"] = 20.0
+        t["triple_threat_idle"] = scale(usg, [0.10, 0.35], [30, 10])
         t["triple_threat_shoot"] = scale(shot_three + shot_mid_range, [0, 100], [10, 45])
 
         # ---------------------------------------------------------------
@@ -237,7 +238,7 @@ class FormulaLayer:
         # Category O: Playstyle Sliders
         # ---------------------------------------------------------------
         if pos in ("PG", "SG"):
-            t["roll_vs_pop"] = 50.0
+            t["roll_vs_pop"] = 40 + scale(fg3a_rate, [0.15, 0.50], [0, 25])
         else:
             t["roll_vs_pop"] = 75 - scale(fg3a_rate, [0.0, 0.3], [0, 50])
         t["transition_spot_up"] = scale(fg3a_rate, [0.0, 0.4], [30, 70])
@@ -266,7 +267,12 @@ class FormulaLayer:
         steal_scale = steal_pos_scale.get(pos, 0.85)
         t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
         t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
-        t["contest_shot"] = 35 + scale(blk_p36, [0.0, 2.0], [0, 20])
+        pos_contest_base = {"PG": 30, "SG": 32, "SF": 33, "PF": 35, "C": 38}
+        t["contest_shot"] = (
+            pos_contest_base.get(pos, 33)
+            + scale(blk_p36, [0.0, 2.5], [0, 15])
+            + scale(stl_p36, [0.3, 2.0], [0, 10])
+        )
         block_scale = profile["block_scale"]
         raw_block = scale(blk_p36, [0.0, 3.5], [5, 55])
         t["block_shot"] = raw_block * (0.6 + 0.4 * block_scale)
@@ -278,7 +284,8 @@ class FormulaLayer:
         # Category S: Fouling
         # ---------------------------------------------------------------
         t["foul"] = scale(pf_p36, [1.0, 4.5], [15, 55])
-        t["hard_foul"] = scale(pf_p36, [2.0, 4.5], [5, 30]) * post_factor
+        hard_foul_base = scale(pf_p36, [2.0, 4.5], [5, 30])
+        t["hard_foul"] = hard_foul_base * (0.3 + 0.7 * post_factor)
 
         # ---------------------------------------------------------------
         # Touches

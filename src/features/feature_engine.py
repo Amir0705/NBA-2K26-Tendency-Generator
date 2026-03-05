@@ -149,6 +149,19 @@ class FeatureEngine:
         has_shot_chart = len(shot_chart) > 0
         zone_data = self._zone_analyzer.analyze(shot_chart, total_minutes)
 
+        # --- Drive right bias: % of close-range shots from right side (LOC_X > 0) ---
+        close_shots = [
+            s for s in shot_chart
+            if s.get("shot_zone_basic", "") in ("Restricted Area", "In The Paint (Non-RA)")
+        ]
+        if close_shots:
+            right_shots = sum(
+                1 for s in close_shots if (s.get("loc_x", 0) or 0) > 0
+            )
+            drive_right_bias = 25.0 + (right_shots / len(close_shots)) * 50.0
+        else:
+            drive_right_bias = 50.0  # neutral fallback
+
         # --- League percentiles ---
         league_rows = self._get_league_averages(season)
         pctile_pts = _percentile(pts_pg, [r.get("PTS", 0) for r in league_rows])
@@ -221,6 +234,7 @@ class FeatureEngine:
             "sub_zone_distribution_close": zone_data["sub_zone_distribution_close"],
             "sub_zone_distribution_mid": zone_data["sub_zone_distribution_mid"],
             "sub_zone_distribution_three": zone_data["sub_zone_distribution_three"],
+            "drive_right_bias": drive_right_bias,
             # Percentiles
             "pctile_pts": pctile_pts,
             "pctile_ast": pctile_ast,
