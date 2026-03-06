@@ -169,8 +169,12 @@ class TestTeamEndpoint:
         data = resp.json()
         assert data["team"] == "GSW"
         assert data["season"] == "2024-25"
+        assert data["roster_season"] == "2025-26"
         assert isinstance(data["players"], list)
         assert data["player_count"] == len(data["players"])
+        assert data["generated_count"] == data["player_count"]
+        assert data["total_players"] >= data["generated_count"]
+        assert data["failed_count"] == data["total_players"] - data["generated_count"]
 
     def test_invalid_team_returns_404(self, client):
         resp = client.get("/team/XYZ")
@@ -181,6 +185,13 @@ class TestTeamEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["season"] == "2023-24"
+
+    def test_team_roster_season_param(self, client):
+        resp = client.get("/team/GSW?season=2024-25&roster_season=2023-24")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["season"] == "2024-25"
+        assert data["roster_season"] == "2023-24"
 
 
 class TestTeamPlayerEndpoint:

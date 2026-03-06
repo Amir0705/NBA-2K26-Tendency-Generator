@@ -592,7 +592,8 @@ generateTeamBtn.addEventListener("click", async () => {
   showSpinner(`Generating ${abbr} roster…`);
 
   try {
-    const resp = await fetch(`/team/${abbr}?season=${season}`);
+    const rosterSeason = "2025-26";
+    const resp = await fetch(`/team/${abbr}?season=${season}&roster_season=${rosterSeason}`);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(err.detail || `HTTP ${resp.status}`);
@@ -610,14 +611,18 @@ generateTeamBtn.addEventListener("click", async () => {
 });
 
 function renderTeam(data, season) {
-  teamTitle.textContent = `${data.team} — ${data.player_count} players · ${season}`;
+  const generated = Number(data.generated_count ?? data.player_count ?? 0);
+  const total = Number(data.total_players ?? data.player_count ?? generated);
+  const rosterSeason = data.roster_season || "2025-26";
+  teamTitle.textContent = `${data.team} — generated ${generated}/${total} · stats ${season} · roster ${rosterSeason}`;
 
   const abbr = encodeURIComponent(data.team_abbr || data.team);
   const teamExportDiv = document.getElementById("teamExportButtons");
   if (teamExportDiv) {
+    const rosterSeasonQuery = encodeURIComponent(rosterSeason);
     teamExportDiv.innerHTML = `
-      <button class="btn btn-sm" onclick="window.location.href='/export/csv/team/${abbr}?season=${season}'">📥 Export Team CSV</button>
-      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}'">📥 Export Team Excel</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/csv/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team CSV</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team Excel</button>
     `;
   }
 

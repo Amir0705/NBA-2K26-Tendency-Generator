@@ -21,6 +21,7 @@ _VALID_TEAMS = {
     "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
     "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
 }
+_DEFAULT_TEAM_ROSTER_SEASON = "2025-26"
 
 _pipeline: TendencyPipeline | None = None
 
@@ -178,18 +179,23 @@ def generate_by_name(player_name: str, season: str = "2024-25") -> dict[str, Any
 
 
 @app.get("/team/{team_abbr}")
-def generate_team(team_abbr: str, season: str = "2024-25") -> dict[str, Any]:
+def generate_team(
+    team_abbr: str,
+    season: str = "2024-25",
+    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+) -> dict[str, Any]:
     """Generate tendencies for all players on a team."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
 
     pipeline = _get_pipeline()
-    roster = pipeline._client.get_team_roster(abbr, season=season)
+    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
 
     players: list[dict[str, Any]] = []
+    total_players = len(roster)
     for player in roster:
         pid = player["player_id"]
         full_name = player["full_name"]
@@ -222,6 +228,10 @@ def generate_team(team_abbr: str, season: str = "2024-25") -> dict[str, Any]:
     return {
         "team": abbr,
         "season": season,
+        "roster_season": roster_season,
+        "total_players": total_players,
+        "generated_count": len(players),
+        "failed_count": max(0, total_players - len(players)),
         "player_count": len(players),
         "players": players,
     }
@@ -229,7 +239,10 @@ def generate_team(team_abbr: str, season: str = "2024-25") -> dict[str, Any]:
 
 @app.get("/team/{team_abbr}/{player_name}")
 def generate_team_player(
-    team_abbr: str, player_name: str, season: str = "2024-25"
+    team_abbr: str,
+    player_name: str,
+    season: str = "2024-25",
+    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
 ) -> dict[str, Any]:
     """Generate tendencies for a specific player on a team."""
     abbr = team_abbr.upper()
@@ -237,7 +250,7 @@ def generate_team_player(
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
 
     pipeline = _get_pipeline()
-    roster = pipeline._client.get_team_roster(abbr, season=season)
+    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
 
@@ -316,13 +329,17 @@ def export_excel_player(player_name: str, season: str = "2024-25") -> Response:
 
 
 @app.get("/export/csv/team/{team_abbr}")
-def export_csv_team(team_abbr: str, season: str = "2024-25") -> Response:
+def export_csv_team(
+    team_abbr: str,
+    season: str = "2024-25",
+    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+) -> Response:
     """Export a full team's tendencies as a CSV file."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
     pipeline = _get_pipeline()
-    roster = pipeline._client.get_team_roster(abbr, season=season)
+    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
     team_data: list[dict[str, Any]] = []
@@ -346,13 +363,17 @@ def export_csv_team(team_abbr: str, season: str = "2024-25") -> Response:
 
 
 @app.get("/export/excel/team/{team_abbr}")
-def export_excel_team(team_abbr: str, season: str = "2024-25") -> Response:
+def export_excel_team(
+    team_abbr: str,
+    season: str = "2024-25",
+    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+) -> Response:
     """Export a full team's tendencies as an Excel file."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
     pipeline = _get_pipeline()
-    roster = pipeline._client.get_team_roster(abbr, season=season)
+    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
     team_data: list[dict[str, Any]] = []
