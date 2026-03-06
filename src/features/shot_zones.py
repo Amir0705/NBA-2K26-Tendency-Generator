@@ -90,9 +90,9 @@ class ShotZoneAnalyzer:
                 zone_fga[zone] += 1
                 zone_fgm[zone] += made
 
-            # Sub-zone: close (ra + paint → left/middle/right by area, LOC_X fallback)
+            # Sub-zone: close (ra + paint → left/middle/right)
             if basic in ("Restricted Area", "In The Paint (Non-RA)"):
-                close_key = _area_to_close_key(area, loc_x)
+                close_key = _area_to_close_key(basic, area, loc_x)
                 close_counts[close_key] += 1
 
             # Sub-zone: mid-range (5-way area split)
@@ -149,12 +149,24 @@ def _bayesian_smooth(
     return (makes + prior_strength * prior_rate) / (attempts + prior_strength)
 
 
-def _area_to_close_key(area: str, loc_x: float) -> str:
-    """Map shot_zone_area to close sub-zone (left/middle/right).
+def _area_to_close_key(basic: str, area: str, loc_x: float) -> str:
+    """Map a close-range shot to left/middle/right sub-zone.
 
-    Uses the NBA API's shot_zone_area field as primary classifier.
-    Falls back to LOC_X with ±40 threshold when area is empty/unknown.
+    For Restricted Area shots, the NBA API always returns area="Center(C)"
+    so we must use LOC_X coordinates. For Paint (Non-RA) shots, the API
+    provides proper area breakdown (Left Side, Right Side, etc.), so we
+    use area as primary with LOC_X fallback.
     """
+    # Restricted Area: always use LOC_X (area is always "Center(C)")
+    basic = basic.strip()
+    if basic == "Restricted Area":
+        if loc_x < -30:
+            return "left"
+        if loc_x > 30:
+            return "right"
+        return "middle"
+
+    # Paint (Non-RA): use shot_zone_area as primary classifier
     area = area.strip()
     if area in ("Left Side(L)", "Left Side Center(LC)"):
         return "left"
@@ -162,10 +174,11 @@ def _area_to_close_key(area: str, loc_x: float) -> str:
         return "right"
     if area == "Center(C)":
         return "middle"
+
     # Fallback: use LOC_X when area is missing or unrecognized
-    if loc_x < -40:
+    if loc_x < -30:
         return "left"
-    if loc_x > 40:
+    if loc_x > 30:
         return "right"
     return "middle"
 
