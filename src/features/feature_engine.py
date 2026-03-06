@@ -29,6 +29,16 @@ def _map_position(raw: str) -> str:
     return _POSITION_MAP.get(key, "SF")
 
 
+def _previous_season(season: str) -> str:
+    """Convert '2024-25' to '2023-24'."""
+    try:
+        start_year = int(season.split("-")[0])
+        end_year_short = int(season.split("-")[1])
+        return f"{start_year - 1}-{(end_year_short - 1) % 100:02d}"
+    except (ValueError, IndexError):
+        return "2023-24"
+
+
 def _height_to_inches(height_str: str) -> int:
     """Convert 'ft-in' string (e.g. '6-6') to total inches."""
     try:
@@ -89,24 +99,48 @@ class FeatureEngine:
         # Fetch tracking data — graceful degradation on failure
         try:
             play_types = self._client.get_play_types(player_id, season=season)
+            if not play_types:
+                prev_season = _previous_season(season)
+                play_types = self._client.get_play_types(player_id, season=prev_season)
+                if play_types:
+                    logger.info("Using fallback season %s for play_types data (player_id=%s)",
+                                prev_season, player_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("play_types tracking data failed for player_id=%s: %s: %s",
                            player_id, type(exc).__name__, exc)
             play_types = {}
         try:
             tracking_shots = self._client.get_tracking_shots(player_id, season=season)
+            if not tracking_shots:
+                prev_season = _previous_season(season)
+                tracking_shots = self._client.get_tracking_shots(player_id, season=prev_season)
+                if tracking_shots:
+                    logger.info("Using fallback season %s for tracking_shots data (player_id=%s)",
+                                prev_season, player_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("tracking_shots data failed for player_id=%s: %s: %s",
                            player_id, type(exc).__name__, exc)
             tracking_shots = {}
         try:
             hustle = self._client.get_hustle_stats(player_id, season=season)
+            if not hustle:
+                prev_season = _previous_season(season)
+                hustle = self._client.get_hustle_stats(player_id, season=prev_season)
+                if hustle:
+                    logger.info("Using fallback season %s for hustle_stats data (player_id=%s)",
+                                prev_season, player_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("hustle_stats data failed for player_id=%s: %s: %s",
                            player_id, type(exc).__name__, exc)
             hustle = {}
         try:
             passing = self._client.get_passing_tracking(player_id, season=season)
+            if not passing:
+                prev_season = _previous_season(season)
+                passing = self._client.get_passing_tracking(player_id, season=prev_season)
+                if passing:
+                    logger.info("Using fallback season %s for passing_tracking data (player_id=%s)",
+                                prev_season, player_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("passing_tracking data failed for player_id=%s: %s: %s",
                            player_id, type(exc).__name__, exc)

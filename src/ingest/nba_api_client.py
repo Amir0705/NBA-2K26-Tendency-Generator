@@ -23,6 +23,18 @@ class NBAApiClient:
 
     _RATE_LIMIT_SECONDS = 0.6
 
+    # Headers required by stats.nba.com to avoid empty/blocked responses
+    _NBA_HEADERS = {
+        "Referer": "https://stats.nba.com/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "x-nba-stats-origin": "stats",
+        "x-nba-stats-token": "true",
+        "Accept": "application/json",
+    }
+
     def __init__(self, cache_dir: str | None = None) -> None:
         """
         Initialise the client.
@@ -67,7 +79,7 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonPlayerInfo(player_id=player_id)
+            return CommonPlayerInfo(player_id=player_id, headers=self._NBA_HEADERS)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonPlayerInfo")
         rows = _parse_response(endpoint, 0)
@@ -106,6 +118,7 @@ class NBAApiClient:
                 season=season,
                 per_mode_detailed="PerGame",
                 timeout=30,
+                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="PlayerDashboardByGeneralSplits")
@@ -158,6 +171,7 @@ class NBAApiClient:
                 season_nullable=season,
                 context_measure_simple="FGA",
                 timeout=30,
+                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="ShotChartDetail")
@@ -204,7 +218,7 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonTeamRoster(team_id=team_info["id"], season=season)
+            return CommonTeamRoster(team_id=team_info["id"], season=season, headers=self._NBA_HEADERS)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonTeamRoster")
         rows = _parse_response(endpoint, 0)
@@ -234,6 +248,7 @@ class NBAApiClient:
                 season=season,
                 per_mode_detailed="PerGame",
                 timeout=30,
+                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="LeagueDashPlayerStats")
@@ -284,6 +299,7 @@ class NBAApiClient:
                         per_mode_simple="PerGame",
                         season_year=season,
                         timeout=30,
+                        headers=self._NBA_HEADERS,
                     )
 
                 endpoint = self._with_retry(_call, endpoint_name=f"SynergyPlayTypes({play_type})")
@@ -297,6 +313,8 @@ class NBAApiClient:
         except Exception as exc:  # noqa: BLE001
             logger.warning("SynergyPlayTypes failed for player_id=%s season=%s: %s: %s",
                            player_id, season, type(exc).__name__, exc)
+            # Negative cache: remember this failure for 1 hour to avoid hammering the API
+            self._cache_set(cache_key, {}, ttl_seconds=3600)
             return {}
 
     def get_tracking_shots(
@@ -324,6 +342,7 @@ class NBAApiClient:
                     season=season,
                     per_mode_simple="Totals",
                     timeout=30,
+                    headers=self._NBA_HEADERS,
                 )
 
             endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtShots")
@@ -371,6 +390,8 @@ class NBAApiClient:
         except Exception as exc:  # noqa: BLE001
             logger.warning("PlayerDashPtShots failed for player_id=%s season=%s: %s: %s",
                            player_id, season, type(exc).__name__, exc)
+            # Negative cache: remember this failure for 1 hour to avoid hammering the API
+            self._cache_set(cache_key, {}, ttl_seconds=3600)
             return {}
 
     def get_hustle_stats(
@@ -397,6 +418,7 @@ class NBAApiClient:
                     season=season,
                     per_mode_time="PerGame",
                     timeout=30,
+                    headers=self._NBA_HEADERS,
                 )
 
             endpoint = self._with_retry(_call, endpoint_name="LeagueHustleStatsPlayer")
@@ -405,6 +427,8 @@ class NBAApiClient:
                 (r for r in rows if r.get("PLAYER_ID") == player_id), None
             )
             if not player_row:
+                # Negative cache: player not in response for 1 hour
+                self._cache_set(cache_key, {}, ttl_seconds=3600)
                 return {}
 
             result = {
@@ -427,6 +451,8 @@ class NBAApiClient:
         except Exception as exc:  # noqa: BLE001
             logger.warning("LeagueHustleStatsPlayer failed for player_id=%s season=%s: %s: %s",
                            player_id, season, type(exc).__name__, exc)
+            # Negative cache: remember this failure for 1 hour to avoid hammering the API
+            self._cache_set(cache_key, {}, ttl_seconds=3600)
             return {}
 
     def get_passing_tracking(
@@ -453,12 +479,15 @@ class NBAApiClient:
                     season=season,
                     per_mode_simple="PerGame",
                     timeout=30,
+                    headers=self._NBA_HEADERS,
                 )
 
             endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtPass")
             # result set 0 = passes made
             rows = _parse_response(endpoint, 0)
             if not rows:
+                # Negative cache: empty response for 1 hour
+                self._cache_set(cache_key, {}, ttl_seconds=3600)
                 return {}
 
             # Aggregate across all pass-to targets
@@ -480,6 +509,8 @@ class NBAApiClient:
         except Exception as exc:  # noqa: BLE001
             logger.warning("PlayerDashPtPass failed for player_id=%s season=%s: %s: %s",
                            player_id, season, type(exc).__name__, exc)
+            # Negative cache: remember this failure for 1 hour to avoid hammering the API
+            self._cache_set(cache_key, {}, ttl_seconds=3600)
             return {}
 
     # ------------------------------------------------------------------
@@ -497,7 +528,7 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonAllPlayers(is_only_current_season=1)
+            return CommonAllPlayers(is_only_current_season=1, headers=self._NBA_HEADERS)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonAllPlayers")
         rows = _parse_response(endpoint, 0)

@@ -408,3 +408,47 @@ footer {
   .tendency-label { width: 150px; }
   .player-name { font-size: 1.1rem; }
 }
+
+/* ===== Tracking Status Indicator ===== */
+.tracking-status {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: rgba(15, 52, 96, 0.2);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tracking-summary {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.tracking-summary.tracking-high { color: var(--bar-high); }
+.tracking-summary.tracking-med { color: var(--bar-med); }
+.tracking-summary.tracking-low { color: var(--bar-low); }
+
+.tracking-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.tracking-pill {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tracking-pill.active {
+  background: rgba(46, 204, 113, 0.15);
+  color: var(--bar-high);
+}
+
+.tracking-pill.inactive {
+  background: rgba(231, 76, 60, 0.15);
+  color: var(--bar-low);
+}

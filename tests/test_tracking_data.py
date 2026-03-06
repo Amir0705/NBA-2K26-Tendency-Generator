@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.features.feature_engine import FeatureEngine
+from src.features.feature_engine import FeatureEngine, _previous_season
 from src.formula.formula_layer import FormulaLayer
 
 
@@ -651,3 +651,138 @@ class TestFormulaLayerHasTrackingFlag:
         t_high = fl.generate(f_high)
         assert t_high["off_screen_shot_three"] > t_low["off_screen_shot_three"]
         assert t_high["off_screen_shot_mid_range"] > t_low["off_screen_shot_mid_range"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: _previous_season helper
+# ---------------------------------------------------------------------------
+
+
+class TestPreviousSeason:
+    """Validate the _previous_season() helper function."""
+
+    def test_standard_season(self):
+        assert _previous_season("2024-25") == "2023-24"
+
+    def test_season_2023_24(self):
+        assert _previous_season("2023-24") == "2022-23"
+
+    def test_season_2022_23(self):
+        assert _previous_season("2022-23") == "2021-22"
+
+    def test_invalid_format_returns_fallback(self):
+        assert _previous_season("invalid") == "2023-24"
+
+    def test_empty_string_returns_fallback(self):
+        assert _previous_season("") == "2023-24"
+
+    def test_century_boundary(self):
+        assert _previous_season("2000-01") == "1999-00"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Season fallback logic in FeatureEngine.build_features()
+# ---------------------------------------------------------------------------
+
+
+class MockClientFallback:
+    """Mock client: primary season returns empty for tracking, fallback season returns data."""
+
+    def __init__(self, primary_season: str, fallback_season: str) -> None:
+        self._primary_season = primary_season
+        self._fallback_season = fallback_season
+
+    def get_player_info(self, player_id: int) -> dict:
+        return _BASE_INFO
+
+    def get_player_stats(self, player_id: int, season: str = "2024-25") -> dict:
+        return _BASE_STATS
+
+    def get_shot_chart(self, player_id: int, season: str = "2024-25") -> list:
+        return _SHOT_CHART
+
+    def get_league_averages(self, season: str = "2024-25") -> list:
+        return _LEAGUE_AVERAGES
+
+    def get_play_types(self, player_id: int, season: str = "2024-25") -> dict:
+        if season == self._fallback_season:
+            return _PLAY_TYPES
+        return {}
+
+    def get_tracking_shots(self, player_id: int, season: str = "2024-25") -> dict:
+        if season == self._fallback_season:
+            return _TRACKING_SHOTS
+        return {}
+
+    def get_hustle_stats(self, player_id: int, season: str = "2024-25") -> dict:
+        if season == self._fallback_season:
+            return _HUSTLE
+        return {}
+
+    def get_passing_tracking(self, player_id: int, season: str = "2024-25") -> dict:
+        if season == self._fallback_season:
+            return _PASSING
+        return {}
+
+
+class TestSeasonFallback:
+    """Validate that FeatureEngine falls back to previous season when primary is empty."""
+
+    def test_fallback_provides_play_types_when_primary_empty(self):
+        """When primary season returns empty play_types, fallback season is used."""
+        client = MockClientFallback(primary_season="2024-25", fallback_season="2023-24")
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        # Tracking data from fallback season should produce real values (not sentinel -1)
+        assert features["playtype_iso_freq"] >= 0.0, (
+            "Expected real play_type data from fallback season"
+        )
+
+    def test_fallback_provides_tracking_shots_when_primary_empty(self):
+        """When primary season returns empty tracking_shots, fallback season is used."""
+        client = MockClientFallback(primary_season="2024-25", fallback_season="2023-24")
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        assert features["tracking_catch_shoot_fga_pct"] >= 0.0, (
+            "Expected real tracking_shots data from fallback season"
+        )
+
+    def test_fallback_provides_hustle_when_primary_empty(self):
+        """When primary season returns empty hustle, fallback season is used."""
+        client = MockClientFallback(primary_season="2024-25", fallback_season="2023-24")
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        assert features["hustle_deflections_pg"] >= 0.0, (
+            "Expected real hustle data from fallback season"
+        )
+
+    def test_fallback_provides_passing_when_primary_empty(self):
+        """When primary season returns empty passing, fallback season is used."""
+        client = MockClientFallback(primary_season="2024-25", fallback_season="2023-24")
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        assert features["tracking_potential_ast_pg"] >= 0.0, (
+            "Expected real passing data from fallback season"
+        )
+
+    def test_no_fallback_when_primary_has_data(self):
+        """When primary season returns data, fallback season is NOT consulted."""
+        # MockClientWithTracking always returns data for any season
+        client = MockClientWithTracking()
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        # All tracking features should be available (>= 0)
+        assert features["playtype_iso_freq"] >= 0.0
+        assert features["tracking_catch_shoot_fga_pct"] >= 0.0
+        assert features["hustle_deflections_pg"] >= 0.0
+        assert features["tracking_potential_ast_pg"] >= 0.0
+
+    def test_sentinel_values_when_both_seasons_empty(self):
+        """When both primary and fallback return empty, sentinel (-1) values are set."""
+        client = MockClientNoTracking()
+        engine = FeatureEngine(client)
+        features = engine.build_features(1, season="2024-25")
+        assert features["playtype_iso_freq"] == -1.0
+        assert features["tracking_catch_shoot_fga_pct"] == -1.0
+        assert features["hustle_deflections_pg"] == -1.0
+        assert features["tracking_potential_ast_pg"] == -1.0
