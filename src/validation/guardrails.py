@@ -139,6 +139,21 @@ class Guardrails:
                 f"<= {max(0.0, 75.0 - triple_pump):.1f}",
             )
 
+        # 6g. Idle ↔ play_discipline guardrail:
+        # High idle + high play_discipline is pathological in 2K — the AI holds the
+        # ball AND rigidly follows the play call, running down the shot clock.
+        # Rule: triple_threat_idle + play_discipline <= 75.
+        # Re-read idle in case 6f already reduced it.
+        triple_idle_cur = tendencies.get("triple_threat_idle", 0)
+        play_discipline_val = tendencies.get("play_discipline", 0)
+        if triple_idle_cur + play_discipline_val > 75:
+            _fix(
+                "triple_threat_idle",
+                max(0.0, 75.0 - play_discipline_val),
+                "triple_threat_idle + play_discipline <= 75",
+                f"<= {max(0.0, 75.0 - play_discipline_val):.1f}",
+            )
+
         # 7. Sub-zone families should sum between 80 and 120
         sub_zone_families = [
             (

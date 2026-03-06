@@ -184,3 +184,56 @@ class TestIdleDisciplineGuardrail:
         for v in idle_v:
             for field in ("rule", "tendency", "value", "expected", "action_taken"):
                 assert field in v
+
+
+class TestIdlePlayDisciplineGuardrail:
+    """Tests for the idle ↔ play_discipline guardrail (6g)."""
+
+    @pytest.fixture(scope="class")
+    def guardrails(self):
+        return Guardrails()
+
+    def test_idle_and_play_discipline_sum_too_high_corrected(self, guardrails):
+        """When idle + play_discipline > 75, triple_threat_idle is reduced."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 50
+        t["triple_threat_pump_fake"] = 20   # keep pump_fake low so 6f doesn't trigger
+        t["play_discipline"] = 40
+        violations = guardrails.check(t)
+        assert any(v["tendency"] == "triple_threat_idle" and "play_discipline" in v["rule"]
+                   for v in violations)
+        assert t["triple_threat_idle"] + t["play_discipline"] <= 75
+
+    def test_idle_and_play_discipline_within_limit_no_violation(self, guardrails):
+        """When idle + play_discipline <= 75, no 6g correction occurs."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 30
+        t["triple_threat_pump_fake"] = 20
+        t["play_discipline"] = 40
+        orig_idle = t["triple_threat_idle"]
+        guardrails.check(t)
+        # Sum is 70 which is within the 75 limit — idle must be unchanged
+        assert t["triple_threat_idle"] == orig_idle
+
+    def test_idle_clamped_to_zero_minimum_by_discipline(self, guardrails):
+        """triple_threat_idle should not go below 0 after the discipline guardrail."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 30
+        t["triple_threat_pump_fake"] = 10
+        t["play_discipline"] = 80
+        guardrails.check(t)
+        assert t["triple_threat_idle"] >= 0.0
+
+    def test_discipline_violation_has_required_fields(self, guardrails):
+        """Guardrail 6g violation must include all required metadata fields."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 55
+        t["triple_threat_pump_fake"] = 10
+        t["play_discipline"] = 30
+        violations = guardrails.check(t)
+        disc_v = [v for v in violations
+                  if v["tendency"] == "triple_threat_idle" and "play_discipline" in v["rule"]]
+        assert len(disc_v) >= 1
+        for v in disc_v:
+            for field in ("rule", "tendency", "value", "expected", "action_taken"):
+                assert field in v
