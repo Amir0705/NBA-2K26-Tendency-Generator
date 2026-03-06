@@ -623,6 +623,7 @@ function renderTeam(data, season) {
     teamExportDiv.innerHTML = `
       <button class="btn btn-sm" onclick="window.location.href='/export/csv/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team CSV</button>
       <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team Excel</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/json/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📦 Export Team JSON ZIP</button>
     `;
   }
 

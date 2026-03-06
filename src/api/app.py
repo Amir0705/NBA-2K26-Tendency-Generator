@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
 from contextlib import asynccontextmanager
+from io import BytesIO
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -392,6 +394,44 @@ def export_excel_team(
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/export/json/team/{team_abbr}")
+def export_json_team_zip(
+    team_abbr: str,
+    season: str = "2024-25",
+    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+) -> Response:
+    """Export a team's tendencies as a ZIP with one JSON file per player."""
+    abbr = team_abbr.upper()
+    if abbr not in _VALID_TEAMS:
+        raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+
+    pipeline = _get_pipeline()
+    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
+    if not roster:
+        raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for player in roster:
+            pid = player["player_id"]
+            full_name = player["full_name"]
+            try:
+                result = pipeline.generate(pid, season=season)
+                tendencies = result.get("tendencies", {})
+                player_json = export_player_json(tendencies, pipeline._registry)
+                member_name = f"{_safe_filename(full_name)}_{pid}_tendencies.json"
+                zf.writestr(member_name, player_json)
+            except Exception:  # noqa: BLE001
+                continue
+
+    filename = f"{abbr}_roster_tendencies_json.zip"
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

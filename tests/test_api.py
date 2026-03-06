@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -209,6 +211,24 @@ class TestTeamPlayerEndpoint:
     def test_invalid_team_returns_404(self, client):
         resp = client.get("/team/XYZ/Stephen Curry")
         assert resp.status_code == 404
+
+
+class TestTeamJsonZipExport:
+    def test_exports_team_json_zip(self, client):
+        resp = client.get("/export/json/team/GSW?season=2024-25&roster_season=2025-26")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        assert "attachment; filename=\"GSW_roster_tendencies_json.zip\"" in resp.headers.get(
+            "content-disposition", ""
+        )
+
+        zf = zipfile.ZipFile(BytesIO(resp.content))
+        members = zf.namelist()
+        assert len(members) >= 1
+        assert any(name.endswith("_tendencies.json") for name in members)
+
+        payload = json.loads(zf.read(members[0]).decode("utf-8"))
+        assert "tendencies" in payload
 
 
 class TestTendencyValues:
