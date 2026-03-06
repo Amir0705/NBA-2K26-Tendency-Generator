@@ -1114,3 +1114,120 @@ class TestRimRunnerPostCalibration:
         raw = formula.generate(_rim_runner_features())
         for k, v in raw.items():
             assert v >= 0.0, f"rim-runner {k}={v} is negative"
+
+
+class TestRaBlendForShotClose:
+    """Tests for RA-blend fix: higher RA rate increases shot_close."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    def test_higher_ra_rate_increases_shot_close(self, formula):
+        """Higher zone_fga_rate_ra with same paint rate should increase shot_close."""
+        f_low_ra = _minimal_features("C")
+        f_low_ra["zone_fga_rate_paint"] = 0.10
+        f_low_ra["zone_fga_rate_ra"] = 0.05
+
+        f_high_ra = _minimal_features("C")
+        f_high_ra["zone_fga_rate_paint"] = 0.10
+        f_high_ra["zone_fga_rate_ra"] = 0.50  # rim-runner level
+
+        r_low = formula.generate(f_low_ra)
+        r_high = formula.generate(f_high_ra)
+        assert r_high["shot_close"] > r_low["shot_close"], (
+            f"High RA player should have higher shot_close: "
+            f"high={r_high['shot_close']:.1f} low={r_low['shot_close']:.1f}"
+        )
+
+    def test_rim_runner_center_has_reasonable_shot_close(self, formula):
+        """Rim-runner center (high RA, low paint) should not have pathologically low shot_close.
+
+        With the RA blend, a center with high RA (0.45) and low paint (0.05) should
+        have a significantly higher shot_close than what paint alone would give (~10).
+        """
+        f = _minimal_features("C")
+        f["zone_fga_rate_ra"] = 0.45    # Gobert-like RA rate
+        f["zone_fga_rate_paint"] = 0.05  # low paint (goes directly to RA)
+        result = formula.generate(f)
+        # Old formula (paint only): scale(0.05, [0,0.3], [0,60]) ≈ 10
+        # New blend: scale(0.85*0.05 + 0.15*0.45, [0,0.3], [0,60]) ≈ 22 — much better
+        assert result["shot_close"] >= 20, (
+            f"Rim-runner shot_close too low (RA blend not working): {result['shot_close']:.1f}"
+        )
+
+    def test_high_paint_player_stays_stable(self, formula):
+        """Player with high paint rate should still have a high shot_close."""
+        f = _minimal_features("PF")
+        f["zone_fga_rate_paint"] = 0.30
+        f["zone_fga_rate_ra"] = 0.20
+        result = formula.generate(f)
+        assert result["shot_close"] >= 35, (
+            f"High-paint PF shot_close too low: {result['shot_close']:.1f}"
+        )
+
+
+class TestCloseDistributionShaping:
+    """Tests for close sub-zone distribution shaping (prevents middle dominance)."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    def test_middle_cannot_exceed_50_pct_of_parent(self, formula):
+        """With middle-heavy raw distribution, shaping should reduce middle dominance.
+
+        The 60/40 blend pulls extreme values toward uniform. With raw middle=90%,
+        the shaped middle becomes ~67% (well below the raw 90%), preventing extreme dominance.
+        """
+        f = _minimal_features("C")
+        # Extreme middle dominance (90% middle)
+        f["sub_zone_distribution_close"] = {"left": 5.0, "middle": 90.0, "right": 5.0}
+        result = formula.generate(f)
+        parent = result["shot_close"]
+        if parent > 0:
+            # Shaped middle should be significantly less than the raw 90%
+            # With 60/40 blend: shaped_middle ≈ 0.6*90 + 0.4*33.3 = 67.3%
+            assert result["shot_close_middle"] / parent <= 0.75, (
+                f"shot_close_middle ({result['shot_close_middle']:.1f}) is pathologically dominant "
+                f"({result['shot_close_middle'] / parent * 100:.0f}% of shot_close {parent:.1f})"
+            )
+
+    def test_left_bias_preserved_after_shaping(self, formula):
+        """Left-dominant distribution should keep shot_close_left > shot_close_right."""
+        f = _minimal_features("C")
+        f["sub_zone_distribution_close"] = {"left": 60.0, "middle": 30.0, "right": 10.0}
+        result = formula.generate(f)
+        assert result["shot_close_left"] > result["shot_close_right"], (
+            f"Left bias not preserved: left={result['shot_close_left']:.1f}, "
+            f"right={result['shot_close_right']:.1f}"
+        )
+
+    def test_right_bias_preserved_after_shaping(self, formula):
+        """Right-dominant distribution should keep shot_close_right > shot_close_left."""
+        f = _minimal_features("C")
+        f["sub_zone_distribution_close"] = {"left": 10.0, "middle": 30.0, "right": 60.0}
+        result = formula.generate(f)
+        assert result["shot_close_right"] > result["shot_close_left"], (
+            f"Right bias not preserved: left={result['shot_close_left']:.1f}, "
+            f"right={result['shot_close_right']:.1f}"
+        )
+
+    def test_close_sub_zones_sum_to_parent_after_shaping(self, formula):
+        """Shaped close sub-zones must still sum to shot_close."""
+        for dist in [
+            {"left": 5.0, "middle": 90.0, "right": 5.0},
+            {"left": 60.0, "middle": 20.0, "right": 20.0},
+            {"left": 33.3, "middle": 33.4, "right": 33.3},
+        ]:
+            f = _minimal_features("C")
+            f["sub_zone_distribution_close"] = dist
+            result = formula.generate(f)
+            total = (
+                result["shot_close_left"]
+                + result["shot_close_middle"]
+                + result["shot_close_right"]
+            )
+            assert total == pytest.approx(result["shot_close"], abs=0.1), (
+                f"Sub-zone sum {total:.2f} != shot_close {result['shot_close']:.2f} for dist {dist}"
+            )
