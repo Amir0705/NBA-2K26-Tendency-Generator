@@ -101,7 +101,8 @@ class FormulaLayer:
         t["shot"] = min(shot * _pts_pctile_boost, 75.0)
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
-        t["shot_close"] = scale(zpaint, [0.0, 0.3], [0, 60])
+        close_mix = 0.85 * zpaint + 0.15 * zra
+        t["shot_close"] = scale(close_mix, [0.0, 0.3], [0, 60])
 
         shot_mid_range = scale(zmid_total, [0.0, 0.35], [0, 55])
         t["shot_mid_range"] = shot_mid_range
@@ -382,11 +383,21 @@ class FormulaLayer:
         # Sub-zones are scaled by their parent tendency so that no sub-zone
         # can exceed the parent value and all sub-zones sum to the parent.
         # ---------------------------------------------------------------
-        # Close sub-zones: scale by shot_close parent
+        # Close sub-zones: shape distribution to prevent middle dominance,
+        # then scale by shot_close parent
+        _close_blend = 0.6  # 60% data, 40% uniform prior
+        _even_close = 100.0 / 3
+        _shaped_close: dict[str, float] = {}
+        for _k in ("left", "middle", "right"):
+            _raw = dist_close.get(_k, _even_close)
+            _shaped_close[_k] = _close_blend * _raw + (1 - _close_blend) * _even_close
+        _shaped_total = sum(_shaped_close.values())
+        _shaped_close = {_k: _v / _shaped_total * 100 for _k, _v in _shaped_close.items()}
+
         _close_parent = t["shot_close"]
-        t["shot_close_left"] = dist_close.get("left", 33.3) * _close_parent / 100
-        t["shot_close_middle"] = dist_close.get("middle", 33.4) * _close_parent / 100
-        t["shot_close_right"] = dist_close.get("right", 33.3) * _close_parent / 100
+        t["shot_close_left"] = _shaped_close["left"] * _close_parent / 100
+        t["shot_close_middle"] = _shaped_close["middle"] * _close_parent / 100
+        t["shot_close_right"] = _shaped_close["right"] * _close_parent / 100
 
         # Mid sub-zones: scale by shot_mid_range parent
         _mid_parent = t["shot_mid_range"]

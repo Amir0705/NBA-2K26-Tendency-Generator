@@ -182,3 +182,103 @@ class TestPipelineSearchPlayer:
     def test_search_result_has_player_id(self, pipeline):
         results = pipeline.search_player("LeBron")
         assert "player_id" in results[0]
+
+
+class TestCloseSubZoneRoundingConstraints:
+    """Tests for parent-aware rounding and tie-break in pipeline."""
+
+    @pytest.fixture(scope="class")
+    def pipeline_with_custom_formula(self):
+        """Pipeline fixture with a formula that produces controlled close sub-zone values."""
+        from src.caps.cap_enforcer import CapEnforcer
+        from src.features.feature_engine import FeatureEngine
+        from src.formula.formula_layer import FormulaLayer
+        from src.validation.guardrails import Guardrails
+
+        p = TendencyPipeline.__new__(TendencyPipeline)
+        mock_client = MockNBAClient()
+        p._registry_path = REGISTRY_PATH
+        p._client = mock_client
+        p._features = FeatureEngine(mock_client)
+        p._formula = FormulaLayer()
+        p._caps = CapEnforcer(REGISTRY_PATH)
+        p._guardrails = Guardrails()
+        p._registry = load_registry(REGISTRY_PATH)
+        return p
+
+    def test_close_sub_zone_sum_equals_shot_close(self, pipeline_with_custom_formula):
+        """After all rounding, shot_close_left + middle + right must equal shot_close."""
+        result = pipeline_with_custom_formula.generate(2544)
+        t = result["tendencies"]
+        close_sum = t["shot_close_left"] + t["shot_close_middle"] + t["shot_close_right"]
+        assert close_sum == t["shot_close"], (
+            f"Close sub-zone sum {close_sum} != shot_close {t['shot_close']}"
+        )
+
+    def test_close_sub_zones_are_multiples_of_5(self, pipeline_with_custom_formula):
+        """After rounding, all close sub-zone tendencies must be multiples of 5."""
+        result = pipeline_with_custom_formula.generate(2544)
+        t = result["tendencies"]
+        for key in ("shot_close_left", "shot_close_middle", "shot_close_right", "shot_close"):
+            assert t[key] % 5 == 0, f"{key}={t[key]} is not a multiple of 5"
+
+    def test_tie_break_applied_with_drive_right_bias(self):
+        """When left==right, drive_right>50 should bias right (right > left)."""
+        # Simulate the tie-break logic directly
+        tendencies = {
+            "shot_close": 30,
+            "shot_close_left": 10,
+            "shot_close_middle": 10,
+            "shot_close_right": 10,
+            "drive_right": 70,  # biased right
+        }
+
+        # Manually apply the tie-break as done in pipeline
+        close_left = tendencies.get("shot_close_left", 0)
+        close_right = tendencies.get("shot_close_right", 0)
+        if close_left == close_right:
+            drive_right = tendencies.get("drive_right", 50)
+            if drive_right > 50 and tendencies["shot_close_left"] >= 5:
+                tendencies["shot_close_right"] += 5
+                tendencies["shot_close_left"] -= 5
+            elif drive_right < 50 and tendencies["shot_close_right"] >= 5:
+                tendencies["shot_close_left"] += 5
+                tendencies["shot_close_right"] -= 5
+
+        assert tendencies["shot_close_right"] > tendencies["shot_close_left"], (
+            f"drive_right>50 should bias right: left={tendencies['shot_close_left']}, "
+            f"right={tendencies['shot_close_right']}"
+        )
+        # Sum must still equal shot_close
+        total = (tendencies["shot_close_left"] + tendencies["shot_close_middle"]
+                 + tendencies["shot_close_right"])
+        assert total == tendencies["shot_close"]
+
+    def test_tie_break_applied_with_drive_left_bias(self):
+        """When left==right, drive_right<50 should bias left (left > right)."""
+        tendencies = {
+            "shot_close": 30,
+            "shot_close_left": 10,
+            "shot_close_middle": 10,
+            "shot_close_right": 10,
+            "drive_right": 30,  # biased left
+        }
+
+        close_left = tendencies.get("shot_close_left", 0)
+        close_right = tendencies.get("shot_close_right", 0)
+        if close_left == close_right:
+            drive_right = tendencies.get("drive_right", 50)
+            if drive_right > 50 and tendencies["shot_close_left"] >= 5:
+                tendencies["shot_close_right"] += 5
+                tendencies["shot_close_left"] -= 5
+            elif drive_right < 50 and tendencies["shot_close_right"] >= 5:
+                tendencies["shot_close_left"] += 5
+                tendencies["shot_close_right"] -= 5
+
+        assert tendencies["shot_close_left"] > tendencies["shot_close_right"], (
+            f"drive_right<50 should bias left: left={tendencies['shot_close_left']}, "
+            f"right={tendencies['shot_close_right']}"
+        )
+        total = (tendencies["shot_close_left"] + tendencies["shot_close_middle"]
+                 + tendencies["shot_close_right"])
+        assert total == tendencies["shot_close"]

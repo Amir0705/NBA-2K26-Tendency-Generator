@@ -154,11 +154,12 @@ class Guardrails:
                 f"<= {max(0.0, 75.0 - play_discipline_val):.1f}",
             )
 
-        # 7. Sub-zone families should sum between 80 and 120
+        # 7. Sub-zone families should sum to their parent tendency (within ±5 tolerance)
         sub_zone_families = [
             (
                 ["shot_close_left", "shot_close_middle", "shot_close_right"],
                 "shot_close sub-zones",
+                "shot_close",
             ),
             (
                 [
@@ -169,6 +170,7 @@ class Guardrails:
                     "shot_mid_right",
                 ],
                 "shot_mid sub-zones",
+                "shot_mid_range",
             ),
             (
                 [
@@ -179,26 +181,30 @@ class Guardrails:
                     "shot_three_right",
                 ],
                 "shot_three sub-zones",
+                "shot_three",
             ),
         ]
-        for family_keys, family_name in sub_zone_families:
+        for family_keys, family_name, parent_key in sub_zone_families:
             total = sum(tendencies.get(k, 0) for k in family_keys)
-            if not (80 <= total <= 120):
-                # Normalize to sum to 100
+            parent_val = tendencies.get(parent_key, 0)
+            tol = max(5.0, parent_val * 0.1)
+            if abs(total - parent_val) > tol:
+                # Normalize to sum to parent value
                 n = len(family_keys)
                 if total <= 0:
+                    even = parent_val / n if parent_val > 0 else 0.0
                     for k in family_keys:
-                        tendencies[k] = 100.0 / n
+                        tendencies[k] = even
                 else:
                     for k in family_keys:
-                        tendencies[k] = tendencies.get(k, 0) / total * 100
+                        tendencies[k] = tendencies.get(k, 0) / total * parent_val
                 violations.append(
                     {
-                        "rule": f"{family_name} sum between 80 and 120",
+                        "rule": f"{family_name} sum within tolerance of {parent_key}",
                         "tendency": family_name,
                         "value": total,
-                        "expected": "80–120",
-                        "action_taken": "normalized to 100",
+                        "expected": f"≈ {parent_val}",
+                        "action_taken": f"normalized to {parent_val:.1f}",
                     }
                 )
 

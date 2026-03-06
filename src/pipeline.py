@@ -114,6 +114,46 @@ class TendencyPipeline:
             violations = []
             errors.append(f"Guardrail error: {exc}")
 
+        # Step 4a: Parent-aware redistribution — ensure sub-zone sums equal parent
+        # (Must run after guardrail re-rounding to avoid being overwritten)
+        _sub_zone_families = [
+            (
+                "shot_close_left", "shot_close_middle", "shot_close_right",
+                "shot_close",
+            ),
+            (
+                "shot_mid_left", "shot_mid_left_center", "shot_mid_center",
+                "shot_mid_right_center", "shot_mid_right",
+                "shot_mid_range",
+            ),
+            (
+                "shot_three_left", "shot_three_left_center", "shot_three_center",
+                "shot_three_right_center", "shot_three_right",
+                "shot_three",
+            ),
+        ]
+        for _family in _sub_zone_families:
+            _parent_key = _family[-1]
+            _child_keys = list(_family[:-1])
+            _parent_val = rounded.get(_parent_key, 0)
+            _child_sum = sum(rounded.get(_k, 0) for _k in _child_keys)
+            if _child_sum != _parent_val and _child_sum > 0:
+                _diff = _parent_val - _child_sum
+                _largest = max(_child_keys, key=lambda _k: rounded.get(_k, 0))
+                rounded[_largest] = rounded.get(_largest, 0) + _diff
+
+        # Step 4b: Tie-break — use drive_right bias when left == right for close shots
+        _close_left = rounded.get("shot_close_left", 0)
+        _close_right = rounded.get("shot_close_right", 0)
+        if _close_left == _close_right:
+            _drive_right = rounded.get("drive_right", 50)
+            if _drive_right > 50 and _close_left >= 5:
+                rounded["shot_close_right"] += 5
+                rounded["shot_close_left"] -= 5
+            elif _drive_right < 50 and _close_right >= 5:
+                rounded["shot_close_left"] += 5
+                rounded["shot_close_right"] -= 5
+
         # Step 5: Cap enforcement
         try:
             capped, audit = self._caps.enforce_all(rounded)

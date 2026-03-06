@@ -16,15 +16,16 @@ def _base_tendencies() -> dict:
     with open(registry_path) as fh:
         registry = json.load(fh)
     t = {e["canonical_name"]: 30 for e in registry}
-    # Fix sub-zone families so they sum to 100 (within [80, 120])
+    # Fix sub-zone families so they sum to their parent (shot_close=30, shot_mid_range=30,
+    # shot_three=30).  Each sub-zone value is parent / n_buckets.
     for k in ("shot_close_left", "shot_close_middle", "shot_close_right"):
-        t[k] = 33
+        t[k] = 10
     for k in ("shot_mid_left", "shot_mid_left_center", "shot_mid_center",
                "shot_mid_right_center", "shot_mid_right"):
-        t[k] = 20
+        t[k] = 6
     for k in ("shot_three_left", "shot_three_left_center", "shot_three_center",
                "shot_three_right_center", "shot_three_right"):
-        t[k] = 20
+        t[k] = 6
     return t
 
 
@@ -68,13 +69,18 @@ class TestGuardrailsCheck:
 
     def test_sub_zone_normalization(self, guardrails):
         t = _base_tendencies()
-        # Make sub-zones sum way too high
+        # Make sub-zones sum way too high relative to parent (shot_close=30)
         t["shot_close_left"] = 80
         t["shot_close_middle"] = 80
         t["shot_close_right"] = 80
         violations = guardrails.check(t)
         total = t["shot_close_left"] + t["shot_close_middle"] + t["shot_close_right"]
-        assert 80 <= total <= 120, f"Sub-zone total {total} not in [80,120]"
+        # Sub-zones should be normalized to sum to the parent value (shot_close=30)
+        parent = t["shot_close"]
+        assert abs(total - parent) <= max(5.0, parent * 0.1), (
+            f"Sub-zone total {total} not close to parent {parent}"
+        )
+        assert any("shot_close" in v["rule"] for v in violations)
 
     def test_at_least_30_nonzero(self, guardrails):
         t = {k: 0 for k in _base_tendencies()}
@@ -237,3 +243,71 @@ class TestIdlePlayDisciplineGuardrail:
         for v in disc_v:
             for field in ("rule", "tendency", "value", "expected", "action_taken"):
                 assert field in v
+
+
+class TestSubZoneParentAwareNormalization:
+    """Tests that sub-zone families normalize to parent value, not 100."""
+
+    @pytest.fixture(scope="class")
+    def guardrails(self):
+        return Guardrails()
+
+    def test_close_sub_zones_normalize_to_parent(self, guardrails):
+        """Close sub-zones that don't sum to parent should be corrected to parent."""
+        t = _base_tendencies()
+        t["shot_close"] = 40
+        # Sub-zones sum to 90, parent is 40 — well outside tolerance
+        t["shot_close_left"] = 30
+        t["shot_close_middle"] = 30
+        t["shot_close_right"] = 30
+        violations = guardrails.check(t)
+        total = t["shot_close_left"] + t["shot_close_middle"] + t["shot_close_right"]
+        assert abs(total - 40) <= max(5.0, 40 * 0.1), (
+            f"Expected sum ≈40 after normalization, got {total}"
+        )
+        assert any("shot_close" in v["rule"] for v in violations)
+
+    def test_mid_sub_zones_normalize_to_parent(self, guardrails):
+        """Mid sub-zones that don't sum to parent are corrected to parent."""
+        t = _base_tendencies()
+        t["shot_mid_range"] = 25
+        # Sub-zones sum to 100 (5 × 20), parent is 25 — outside tolerance
+        for k in ("shot_mid_left", "shot_mid_left_center", "shot_mid_center",
+                  "shot_mid_right_center", "shot_mid_right"):
+            t[k] = 20
+        violations = guardrails.check(t)
+        total = sum(t[k] for k in ("shot_mid_left", "shot_mid_left_center", "shot_mid_center",
+                                    "shot_mid_right_center", "shot_mid_right"))
+        assert abs(total - 25) <= max(5.0, 25 * 0.1), (
+            f"Expected sum ≈25 after normalization, got {total}"
+        )
+        assert any("shot_mid" in v["rule"] for v in violations)
+
+    def test_three_sub_zones_normalize_to_parent(self, guardrails):
+        """Three sub-zones that don't sum to parent are corrected to parent."""
+        t = _base_tendencies()
+        t["shot_three"] = 20
+        # Sub-zones sum to 100 (5 × 20), parent is 20 — outside tolerance
+        for k in ("shot_three_left", "shot_three_left_center", "shot_three_center",
+                  "shot_three_right_center", "shot_three_right"):
+            t[k] = 20
+        violations = guardrails.check(t)
+        total = sum(t[k] for k in ("shot_three_left", "shot_three_left_center",
+                                    "shot_three_center", "shot_three_right_center",
+                                    "shot_three_right"))
+        assert abs(total - 20) <= max(5.0, 20 * 0.1), (
+            f"Expected sum ≈20 after normalization, got {total}"
+        )
+        assert any("shot_three" in v["rule"] for v in violations)
+
+    def test_close_sub_zones_already_summing_to_parent_no_violation(self, guardrails):
+        """No violation when close sub-zones already sum to parent."""
+        t = _base_tendencies()
+        t["shot_close"] = 30
+        t["shot_close_left"] = 10
+        t["shot_close_middle"] = 10
+        t["shot_close_right"] = 10
+        violations = guardrails.check(t)
+        close_violations = [v for v in violations
+                            if "shot_close sub-zones" in v.get("tendency", "")]
+        assert len(close_violations) == 0
