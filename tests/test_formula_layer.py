@@ -232,6 +232,40 @@ class TestFormulaLayerGenerate:
         assert r_right["shot_close_middle"] <= 50
         assert r_mid["shot_close_middle"] <= 50
 
+    def test_close_middle_not_pathologically_dominant(self, formula):
+        f = _minimal_features("C")
+        f["zone_fga_rate_paint"] = 0.30
+        f["sub_zone_distribution_close"] = {"left": 10.0, "middle": 80.0, "right": 10.0}
+
+        result = formula.generate(f)
+        close_parent = result["shot_close"]
+
+        assert result["shot_close_middle"] <= close_parent * 0.55 + 1e-6
+        assert result["shot_close_left"] >= close_parent * 0.20 - 1e-6
+        assert result["shot_close_right"] >= close_parent * 0.20 - 1e-6
+
+    def test_close_left_right_bias_is_preserved(self, formula):
+        f = _minimal_features("SF")
+        f["zone_fga_rate_paint"] = 0.25
+        f["sub_zone_distribution_close"] = {"left": 42.0, "middle": 43.0, "right": 15.0}
+
+        result = formula.generate(f)
+        assert result["shot_close_left"] > result["shot_close_right"]
+
+    def test_shot_close_gets_mild_ra_influence(self, formula):
+        low_ra = _minimal_features("C")
+        low_ra["zone_fga_rate_paint"] = 0.15
+        low_ra["zone_fga_rate_ra"] = 0.10
+
+        high_ra = _minimal_features("C")
+        high_ra["zone_fga_rate_paint"] = 0.15
+        high_ra["zone_fga_rate_ra"] = 0.35
+
+        low_result = formula.generate(low_ra)
+        high_result = formula.generate(high_ra)
+
+        assert high_result["shot_close"] > low_result["shot_close"]
+
 
 class TestFormulaLayerCompute:
     def test_compute_returns_integers(self):
@@ -402,6 +436,23 @@ class TestFormulaBugFixes:
         pg_r = formula.generate(pg_f)
         c_r = formula.generate(c_f)
         assert c_r["play_discipline"] > pg_r["play_discipline"]
+
+    def test_play_discipline_capped_to_55(self, formula):
+        """play_discipline should never exceed 55 after tuning."""
+        low_usg_center = _minimal_features("C")
+        low_usg_center["usg_pct_proxy"] = 0.10
+        result = formula.generate(low_usg_center)
+        assert result["play_discipline"] <= 55.0
+
+    def test_play_discipline_role_higher_than_star_same_position(self, formula):
+        """Low-usage role player should get higher play_discipline than high-usage star."""
+        role = _minimal_features("SF")
+        role["usg_pct_proxy"] = 0.15
+        star = _minimal_features("SF")
+        star["usg_pct_proxy"] = 0.34
+        role_r = formula.generate(role)
+        star_r = formula.generate(star)
+        assert role_r["play_discipline"] > star_r["play_discipline"]
 
     def test_no_driving_dribble_move_clamped(self, formula):
         """no_driving_dribble_move must be in [15, 75] for all positions."""

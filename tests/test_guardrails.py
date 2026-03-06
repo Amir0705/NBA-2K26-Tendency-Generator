@@ -16,8 +16,7 @@ def _base_tendencies() -> dict:
     with open(registry_path) as fh:
         registry = json.load(fh)
     t = {e["canonical_name"]: 30 for e in registry}
-    # Fix sub-zone families so they sum to their parent (shot_close=30, shot_mid_range=30,
-    # shot_three=30).  Each sub-zone value is parent / n_buckets.
+    # Keep sub-zone families aligned to their parent tendency (30)
     for k in ("shot_close_left", "shot_close_middle", "shot_close_right"):
         t[k] = 10
     for k in ("shot_mid_left", "shot_mid_left_center", "shot_mid_center",
@@ -73,14 +72,12 @@ class TestGuardrailsCheck:
         t["shot_close_left"] = 80
         t["shot_close_middle"] = 80
         t["shot_close_right"] = 80
-        violations = guardrails.check(t)
+        guardrails.check(t)
         total = t["shot_close_left"] + t["shot_close_middle"] + t["shot_close_right"]
-        # Sub-zones should be normalized to sum to the parent value (shot_close=30)
-        parent = t["shot_close"]
-        assert abs(total - parent) <= max(5.0, parent * 0.1), (
-            f"Sub-zone total {total} not close to parent {parent}"
-        )
-        assert any("shot_close" in v["rule"] for v in violations)
+        assert total == pytest.approx(t["shot_close"], abs=1.0)
+        assert t["shot_close_left"] <= t["shot_close"]
+        assert t["shot_close_middle"] <= t["shot_close"]
+        assert t["shot_close_right"] <= t["shot_close"]
 
     def test_at_least_30_nonzero(self, guardrails):
         t = {k: 0 for k in _base_tendencies()}

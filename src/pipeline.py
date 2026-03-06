@@ -25,6 +25,92 @@ def _round_to_5(x: float) -> int:
     return max(0, min(100, 5 * round(x / 5)))
 
 
+def _round_family_to_parent(
+    raw_values: dict[str, float],
+    rounded: dict[str, int],
+    parent_key: str,
+    family_keys: list[str],
+) -> None:
+    """Round a sub-zone family so its members sum exactly to parent (5-step values)."""
+    parent_rounded = rounded.get(parent_key)
+    if parent_rounded is None:
+        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
+        rounded[parent_key] = parent_rounded
+
+    parent_rounded = max(0, min(100, parent_rounded))
+    target_units = parent_rounded // 5
+
+    if target_units <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
+
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+
+    if total_raw <= 0:
+        # Evenly distribute the parent's 5-point units.
+        base = target_units // len(family_keys)
+        remainder = target_units % len(family_keys)
+        units = [base + (1 if i < remainder else 0) for i in range(len(family_keys))]
+    else:
+        ideal_units = [val / total_raw * target_units for val in family_raw]
+        units = [int(u) for u in ideal_units]
+        remainder = target_units - sum(units)
+        fractions = sorted(
+            [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+            reverse=True,
+        )
+        for idx in range(remainder):
+            units[fractions[idx][1]] += 1
+
+    for key, unit in zip(family_keys, units):
+        rounded[key] = unit * 5
+
+
+def _apply_close_side_tiebreak(rounded: dict[str, int], drive_right_bias: float) -> None:
+    """Break exact close left/right ties using drive-side bias while preserving sums."""
+    left_key = "shot_close_left"
+    middle_key = "shot_close_middle"
+    right_key = "shot_close_right"
+
+    left = rounded.get(left_key, 0)
+    middle = rounded.get(middle_key, 0)
+    right = rounded.get(right_key, 0)
+    parent = rounded.get("shot_close", left + middle + right)
+
+    if left != right:
+        return
+    if parent < 15:
+        return
+    if abs(drive_right_bias - 50.0) < 2.5:
+        return
+
+    prefer_right = drive_right_bias > 50.0
+    if middle >= 5:
+        if prefer_right:
+            right += 5
+        else:
+            left += 5
+        middle -= 5
+    else:
+        if prefer_right and left >= 5:
+            right += 5
+            left -= 5
+        elif (not prefer_right) and right >= 5:
+            left += 5
+            right -= 5
+
+    # Safety renormalization to preserve exact parent sum.
+    total = left + middle + right
+    if total != parent:
+        middle += parent - total
+
+    rounded[left_key] = max(0, left)
+    rounded[middle_key] = max(0, middle)
+    rounded[right_key] = max(0, right)
+
+
 def load_registry(registry_path: str) -> list[dict[str, Any]]:
     """Load tendency registry JSON."""
     with open(registry_path, encoding="utf-8") as fh:
@@ -110,6 +196,42 @@ class TendencyPipeline:
             # Apply corrected values back
             for k, v in guardrail_input.items():
                 rounded[k] = _round_to_5(v)
+
+            # Preserve parent-consistent sub-zone sums after 5-step rounding.
+            _round_family_to_parent(
+                guardrail_input,
+                rounded,
+                "shot_close",
+                ["shot_close_left", "shot_close_middle", "shot_close_right"],
+            )
+            _apply_close_side_tiebreak(
+                rounded,
+                float(guardrail_input.get("drive_right", guardrail_input.get("drive_right_bias", 50.0))),
+            )
+            _round_family_to_parent(
+                guardrail_input,
+                rounded,
+                "shot_mid_range",
+                [
+                    "shot_mid_left",
+                    "shot_mid_left_center",
+                    "shot_mid_center",
+                    "shot_mid_right_center",
+                    "shot_mid_right",
+                ],
+            )
+            _round_family_to_parent(
+                guardrail_input,
+                rounded,
+                "shot_three",
+                [
+                    "shot_three_left",
+                    "shot_three_left_center",
+                    "shot_three_center",
+                    "shot_three_right_center",
+                    "shot_three_right",
+                ],
+            )
         except Exception as exc:  # noqa: BLE001
             violations = []
             errors.append(f"Guardrail error: {exc}")

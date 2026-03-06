@@ -15,6 +15,67 @@ def scale(value: float, input_range: list, output_range: list) -> float:
     return out_min + normalized * (out_max - out_min)
 
 
+def _shape_close_distribution(
+    dist_close: dict[str, float],
+    min_side_total_share: float = 40.0,
+    min_single_side_share: float = 10.0,
+    max_middle_share: float = 55.0,
+) -> dict[str, float]:
+    """Return a stable left/middle/right percentage split (sums to 100).
+
+    Goals:
+    - prevent close middle from being chronically dominant,
+    - keep left/right from collapsing to near-zero,
+    - preserve observed player bias as much as possible.
+    """
+    left = max(0.0, float(dist_close.get("left", 33.3)))
+    middle = max(0.0, float(dist_close.get("middle", 33.4)))
+    right = max(0.0, float(dist_close.get("right", 33.3)))
+
+    total = left + middle + right
+    if total <= 0:
+        return {"left": 33.3, "middle": 33.4, "right": 33.3}
+
+    left = left / total * 100.0
+    middle = middle / total * 100.0
+    right = right / total * 100.0
+
+    # Preserve observed left/right bias ratio while limiting middle dominance.
+    raw_side_total = left + right
+    if raw_side_total <= 0:
+        left_ratio = 0.5
+    else:
+        left_ratio = left / raw_side_total
+
+    middle = min(middle, max_middle_share)
+    side_total = max(min_side_total_share, 100.0 - middle)
+    side_total = min(side_total, 100.0)
+    middle = 100.0 - side_total
+
+    left = side_total * left_ratio
+    right = side_total - left
+
+    # Prevent one side from collapsing to near-zero without forcing symmetry.
+    if left < min_single_side_share:
+        deficit = min_single_side_share - left
+        left = min_single_side_share
+        right = max(0.0, right - deficit)
+    if right < min_single_side_share:
+        deficit = min_single_side_share - right
+        right = min_single_side_share
+        left = max(0.0, left - deficit)
+
+    # Final exact normalization.
+    final_total = left + middle + right
+    if final_total <= 0:
+        return {"left": 33.3, "middle": 33.4, "right": 33.3}
+    return {
+        "left": left / final_total * 100.0,
+        "middle": middle / final_total * 100.0,
+        "right": right / final_total * 100.0,
+    }
+
+
 class FormulaLayer:
     """Deterministic rule-based tendency calculator."""
 
@@ -337,9 +398,11 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category Q: Discipline
         # ---------------------------------------------------------------
-        pos_discipline = {"PG": -5, "SG": 0, "SF": 0, "PF": 5, "C": 10}
-        play_discipline = 60 - scale(usg, [0.10, 0.35], [0, 30]) + pos_discipline.get(pos, 0)
-        t["play_discipline"] = max(play_discipline, 35.0)
+        # Higher for low-usage role players (stick to playbook), lower for stars
+        # to preserve freelance creation. Hard-clamped to avoid offensive stalling.
+        pos_discipline = {"PG": -4, "SG": -1, "SF": 0, "PF": 2, "C": 4}
+        play_discipline = 56 - scale(usg, [0.10, 0.35], [0, 24]) + pos_discipline.get(pos, 0)
+        t["play_discipline"] = max(30.0, min(55.0, play_discipline))
 
         # ---------------------------------------------------------------
         # Category R: Defense
@@ -383,21 +446,12 @@ class FormulaLayer:
         # Sub-zones are scaled by their parent tendency so that no sub-zone
         # can exceed the parent value and all sub-zones sum to the parent.
         # ---------------------------------------------------------------
-        # Close sub-zones: shape distribution to prevent middle dominance,
-        # then scale by shot_close parent
-        _close_blend = 0.6  # 60% data, 40% uniform prior
-        _even_close = 100.0 / 3
-        _shaped_close: dict[str, float] = {}
-        for _k in ("left", "middle", "right"):
-            _raw = dist_close.get(_k, _even_close)
-            _shaped_close[_k] = _close_blend * _raw + (1 - _close_blend) * _even_close
-        _shaped_total = sum(_shaped_close.values())
-        _shaped_close = {_k: _v / _shaped_total * 100 for _k, _v in _shaped_close.items()}
-
+        # Close sub-zones: scale by shot_close parent
+        dist_close_shaped = _shape_close_distribution(dist_close)
         _close_parent = t["shot_close"]
-        t["shot_close_left"] = _shaped_close["left"] * _close_parent / 100
-        t["shot_close_middle"] = _shaped_close["middle"] * _close_parent / 100
-        t["shot_close_right"] = _shaped_close["right"] * _close_parent / 100
+        t["shot_close_left"] = dist_close_shaped["left"] * _close_parent / 100
+        t["shot_close_middle"] = dist_close_shaped["middle"] * _close_parent / 100
+        t["shot_close_right"] = dist_close_shaped["right"] * _close_parent / 100
 
         # Mid sub-zones: scale by shot_mid_range parent
         _mid_parent = t["shot_mid_range"]

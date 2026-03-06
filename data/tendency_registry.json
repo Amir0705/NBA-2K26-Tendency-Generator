@@ -1190,7 +1190,7 @@
     "primjer_label": "Play Discipline",
     "offset": 1120,
     "bit_offset": 0,
-    "hard_cap": 75,
+    "hard_cap": 55,
     "category": "playstyle",
     "parent_tendency": null,
     "is_sub_zone": false

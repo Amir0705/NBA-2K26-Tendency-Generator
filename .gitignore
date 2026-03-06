@@ -12,3 +12,9 @@ build/
 venv/
 models/
 output/
+
+# Local ad-hoc helper/output files
+_tmp_run_candidates.py
+tmp_extract_play_discipline.py
+candidate_results_2024_25.json
+sanity.txt
