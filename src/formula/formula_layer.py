@@ -51,6 +51,25 @@ class FormulaLayer:
         pf_p36 = f.get("pf_per36", 2.5)
         oreb_pct = f.get("oreb_pct_proxy", 0.1)
 
+        # Tracking / hustle stats (use -1.0 sentinel; fall back to position defaults)
+        hustle_loose_balls = f.get("hustle_loose_balls_pg", -1.0)
+        hustle_charges = f.get("hustle_charges_drawn_pg", -1.0)
+
+        # Physical attributes
+        height_inches = f.get("height_inches", 78)    # 6-6 = 78 in default
+        weight_lbs = f.get("weight_lbs", 220)
+
+        # Shooting efficiency
+        fg_pct = f.get("fg_pct", 0.45)
+        fg3_pct = f.get("fg3_pct", 0.35)
+        ts_pct = f.get("ts_pct", 0.55)
+
+        # Playmaking discipline
+        ast_to_tov = f.get("ast_to_tov", 1.5)
+
+        # League percentile ranks (0.0 – 1.0)
+        pctile_pts = f.get("pctile_pts", 0.5)
+
         # Zone rates
         zra = f.get("zone_fga_rate_ra", 0.1)
         zpaint = f.get("zone_fga_rate_paint", 0.1)
@@ -78,7 +97,8 @@ class FormulaLayer:
             0.6 * scale(usg, [0.10, 0.35], [20, 75])
             + 0.4 * scale(fga_p36, [3, 25], [15, 75])
         ) * shooting_skill
-        t["shot"] = min(shot, 75.0)
+        _pts_pctile_boost = scale(pctile_pts, [0.3, 0.8], [0.95, 1.05])
+        t["shot"] = min(shot * _pts_pctile_boost, 75.0)
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
         t["shot_close"] = scale(zpaint, [0.0, 0.3], [0, 60])
@@ -106,13 +126,15 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category C: Contested / Advanced Shooting
         # ---------------------------------------------------------------
-        t["contested_jumper_mid_range"] = shot_mid_range * 0.55
-        t["contested_jumper_three"] = shot_three * 0.35
-        t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost
+        _eff_mid = scale(fg_pct, [0.40, 0.55], [0.85, 1.15])
+        _eff_three = scale(fg3_pct, [0.30, 0.42], [0.85, 1.15])
+        t["contested_jumper_mid_range"] = shot_mid_range * 0.55 * _eff_mid
+        t["contested_jumper_three"] = shot_three * 0.35 * _eff_three
+        t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost * _eff_mid
         t["stepback_jumper_three"] = (
             scale(shot_three, [0, 60], [0, 30]) * dribble_boost
             + scale(fg3a_rate, [0.3, 0.6], [0, 10])
-        )
+        ) * _eff_three
         t["spin_jumper"] = scale(shot_mid_range, [0, 55], [0, 15]) * dribble_boost
 
         # ---------------------------------------------------------------
@@ -146,7 +168,13 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category G: Physical
         # ---------------------------------------------------------------
-        t["crash"] = scale(pf_p36, [1.0, 4.0], [10, 40])
+        if hustle_loose_balls >= 0 and hustle_charges >= 0:
+            # Base 15 = league-floor crash value; loose-balls adds up to 15, charges up to 10
+            _crash_raw = 15 + scale(hustle_loose_balls, [0, 1.5], [0, 15]) + scale(hustle_charges, [0, 0.5], [0, 10])
+            t["crash"] = min(float(round(_crash_raw)), 45.0)
+        else:
+            _pos_crash = {"C": 22.0, "PF": 20.0, "SF": 18.0, "SG": 15.0, "PG": 15.0}
+            t["crash"] = _pos_crash.get(pos, 17.0)
 
         # ---------------------------------------------------------------
         # Category H: Driving
@@ -170,7 +198,13 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         t["triple_threat_pump_fake"] = scale(shot_mid_range + shot_three, [0, 100], [10, 45])
         t["triple_threat_jab_step"] = scale(drive, [0, 60], [10, 40])
-        t["triple_threat_idle"] = scale(usg, [0.10, 0.35], [30, 10])
+        # Multi-factor idle: usage (high → less idle), assists (playmakers move more),
+        # position (guards idle less), and physical size (bigger players idle more)
+        _usg_idle = scale(usg, [0.10, 0.35], [28, 8])
+        _ast_idle_adj = scale(ast_p36, [1.0, 10.0], [0, 8])
+        _pos_idle_adj = {"PG": -4, "SG": -2, "SF": 0, "PF": 3, "C": 6}.get(pos, 0)
+        _size_idle = scale(height_inches, [72, 84], [-2, 3]) + scale(weight_lbs, [180, 270], [-1, 2])
+        t["triple_threat_idle"] = max(4.0, min(38.0, _usg_idle - _ast_idle_adj + _pos_idle_adj + _size_idle))
         t["triple_threat_shoot"] = scale(shot_three + shot_mid_range, [0, 100], [10, 45])
 
         # ---------------------------------------------------------------
@@ -183,15 +217,18 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category K: Dribble Moves
         # ---------------------------------------------------------------
+        # Position/size-based differentiation: guards have more elaborate ball-handling
+        _gd = {"PG": 1.20, "SG": 1.05, "SF": 0.90, "PF": 0.70, "C": 0.45}.get(pos, 0.90)
+        _h_dribble = scale(height_inches, [72, 84], [1.15, 0.90])  # shorter → better ball handling
         creation_score = scale(usg, [0.10, 0.30], [5, 35]) * dribble_boost
-        t["driving_crossover"] = creation_score * 1.0
+        t["driving_crossover"] = creation_score * 1.0 * _gd
         t["driving_spin"] = creation_score * 0.8
         t["driving_step_back"] = creation_score * 0.7
         t["driving_half_spin"] = creation_score * 0.7
-        t["driving_double_crossover"] = creation_score * 0.7
-        t["driving_behind_the_back"] = creation_score * 0.7
-        t["driving_dribble_hesitation"] = creation_score * 0.95
-        t["driving_in_and_out"] = creation_score * 0.85
+        t["driving_double_crossover"] = creation_score * 0.7 * _gd
+        t["driving_behind_the_back"] = creation_score * 0.7 * _gd * _h_dribble
+        t["driving_dribble_hesitation"] = creation_score * 0.95 * _gd * _h_dribble
+        t["driving_in_and_out"] = creation_score * 0.85 * _gd
         no_dribble_base = 75 - creation_score * 1.5
         pos_no_dribble = {"PG": -10, "SG": -5, "SF": 0, "PF": 5, "C": 10}
         t["no_driving_dribble_move"] = max(15.0, min(75.0, no_dribble_base + pos_no_dribble.get(pos, 0)))
@@ -205,9 +242,11 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category M: Passing
         # ---------------------------------------------------------------
-        # Flashy pass should be driven by passing ability (ast_per36), not ball-handling
+        # Flashy pass driven by passing ability, gated by ast_to_tov discipline:
+        # disciplined passers (high ratio) pass flashier less; riskier passers more so
         guard_flashy_bonus = 1.1 if pos in ("PG", "SG") else 1.0
-        t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus
+        _flashy_tov = scale(ast_to_tov, [0.5, 3.5], [1.10, 0.85])
+        t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus * _flashy_tov
         t["alley_oop_pass"] = scale(ast_p36, [2, 10], [5, 35]) * (0.5 + 0.5 * dribble_boost)
 
         # ---------------------------------------------------------------
@@ -216,22 +255,29 @@ class FormulaLayer:
         post_score = (
             scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
         )
-        t["post_up"] = post_score * 1.0
+        # Height/weight size factors: taller/heavier → better at power post moves
+        _h_post = scale(height_inches, [72, 84], [0.85, 1.15])
+        _w_post = scale(weight_lbs, [180, 270], [0.90, 1.10])
+        _size_post = _h_post * _w_post
+        # Finesse moves (spin) favour shorter/quicker players
+        _spin_size = scale(height_inches, [72, 84], [1.20, 0.85])
+
+        t["post_up"] = post_score * 1.0 * _size_post
         t["post_shimmy_shot"] = post_score * 0.3
         t["post_face_up"] = post_score * 0.7
-        t["post_back_down"] = post_score * 0.6
-        t["post_aggressive_backdown"] = post_score * 0.4
+        t["post_back_down"] = post_score * (0.7 if pos == "C" else 0.6) * _size_post
+        t["post_aggressive_backdown"] = post_score * (0.5 if pos == "C" else 0.4) * _size_post
         t["shoot_from_post"] = post_score * 0.8
-        t["post_hook_left"] = post_score * 0.2
-        t["post_hook_right"] = post_score * 0.2
-        t["post_fade_left"] = post_score * 0.25
-        t["post_fade_right"] = post_score * 0.25
-        t["post_up_and_under"] = post_score * 0.4
+        t["post_hook_left"] = post_score * 0.2 * _size_post
+        t["post_hook_right"] = post_score * 0.2 * _size_post
+        t["post_fade_left"] = post_score * 0.25 * _size_post
+        t["post_fade_right"] = post_score * 0.25 * _size_post
+        t["post_up_and_under"] = post_score * (0.5 if pos == "C" else 0.4)
         t["post_hop_shot"] = post_score * 0.35
         t["post_step_back_shot"] = post_score * 0.35
         t["post_drive"] = post_score * 0.65
-        t["post_spin"] = post_score * 0.4
-        t["post_drop_step"] = post_score * 0.4
+        t["post_spin"] = post_score * 0.4 * _spin_size
+        t["post_drop_step"] = post_score * (0.55 if pos == "C" else 0.4)
         t["post_hop_step"] = post_score * 0.3
 
         # ---------------------------------------------------------------
@@ -246,7 +292,9 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category P: Isolation
         # ---------------------------------------------------------------
-        iso_base = scale(usg, [0.10, 0.32], [0, 40]) * dribble_boost
+        # High-efficiency scorers are more willing to take ISO opportunities
+        _iso_eff = scale(ts_pct, [0.48, 0.65], [0.85, 1.20])
+        iso_base = scale(usg, [0.10, 0.32], [0, 40]) * dribble_boost * _iso_eff
         t["iso_vs_elite_defender"] = iso_base * 0.5
         t["iso_vs_good_defender"] = iso_base * 0.7
         t["iso_vs_average_defender"] = iso_base * 0.85
