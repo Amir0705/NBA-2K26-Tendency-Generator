@@ -1,13 +1,10 @@
 """NBA Stats API client using the nba_api library."""
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
 from src.ingest.cache import Cache
-
-logger = logging.getLogger(__name__)
 
 
 def _parse_response(endpoint_obj: Any, result_set_index: int = 0) -> list[dict]:
@@ -22,18 +19,6 @@ class NBAApiClient:
     """Fetches live player stats from the nba_api library."""
 
     _RATE_LIMIT_SECONDS = 0.6
-
-    # Headers required by stats.nba.com to avoid empty/blocked responses
-    _NBA_HEADERS = {
-        "Referer": "https://stats.nba.com/",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "x-nba-stats-origin": "stats",
-        "x-nba-stats-token": "true",
-        "Accept": "application/json",
-    }
 
     def __init__(self, cache_dir: str | None = None) -> None:
         """
@@ -52,12 +37,7 @@ class NBAApiClient:
 
     def search_player(self, name: str) -> list[dict[str, Any]]:
         """Search for players by name; returns list of matching records."""
-        try:
-            all_players = self._get_all_players()
-        except Exception:  # noqa: BLE001
-            logger.warning("Live player list unavailable, falling back to static player list")
-            all_players = self._get_static_players()
-
+        all_players = self._get_all_players()
         name_lower = name.lower()
         results = []
         for p in all_players:
@@ -84,7 +64,7 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonPlayerInfo(player_id=player_id, headers=self._NBA_HEADERS)
+            return CommonPlayerInfo(player_id=player_id)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonPlayerInfo")
         rows = _parse_response(endpoint, 0)
@@ -123,7 +103,6 @@ class NBAApiClient:
                 season=season,
                 per_mode_detailed="PerGame",
                 timeout=30,
-                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="PlayerDashboardByGeneralSplits")
@@ -176,7 +155,6 @@ class NBAApiClient:
                 season_nullable=season,
                 context_measure_simple="FGA",
                 timeout=30,
-                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="ShotChartDetail")
@@ -223,7 +201,7 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonTeamRoster(team_id=team_info["id"], season=season, headers=self._NBA_HEADERS)
+            return CommonTeamRoster(team_id=team_info["id"], season=season)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonTeamRoster")
         rows = _parse_response(endpoint, 0)
@@ -253,270 +231,12 @@ class NBAApiClient:
                 season=season,
                 per_mode_detailed="PerGame",
                 timeout=30,
-                headers=self._NBA_HEADERS,
             )
 
         endpoint = self._with_retry(_call, endpoint_name="LeagueDashPlayerStats")
         rows = _parse_response(endpoint, 0)
         self._cache_set(cache_key, rows, ttl_seconds=604800)  # 1 week
         return rows  # type: ignore[return-value]
-
-    def get_play_types(
-        self, player_id: int, season: str = "2024-25"
-    ) -> dict[str, Any]:
-        """
-        Return play-type frequency and PPP data for *player_id* using SynergyPlayTypes.
-
-        Keys returned (all float, 0.0 on failure):
-            iso_freq, pnr_ball_freq, pnr_roll_freq, post_up_freq,
-            spot_up_freq, handoff_freq, cut_freq, off_screen_freq,
-            transition_freq, putback_freq
-        """
-        cache_key = f"play_types:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            from nba_api.stats.endpoints import SynergyPlayTypes  # noqa: PLC0415
-
-            play_type_map = {
-                "Isolation": "iso_freq",
-                "PRBallHandler": "pnr_ball_freq",
-                "PRRollman": "pnr_roll_freq",
-                "Postup": "post_up_freq",
-                "Spotup": "spot_up_freq",
-                "Handoff": "handoff_freq",
-                "Cut": "cut_freq",
-                "OffScreen": "off_screen_freq",
-                "Transition": "transition_freq",
-                "OffRebound": "putback_freq",
-            }
-            result: dict[str, float] = {v: 0.0 for v in play_type_map.values()}
-
-            for play_type in play_type_map:
-                def _call(pt: str = play_type) -> Any:
-                    self._rate_limit()
-                    return SynergyPlayTypes(
-                        player_id=player_id,
-                        play_type_nullable=pt,
-                        type_grouping_nullable="offensive",
-                        per_mode_simple="PerGame",
-                        season_year=season,
-                        timeout=30,
-                        headers=self._NBA_HEADERS,
-                    )
-
-                endpoint = self._with_retry(_call, endpoint_name=f"SynergyPlayTypes({play_type})")
-                rows = _parse_response(endpoint, 0)
-                if rows:
-                    freq_pct = float(rows[0].get("POSS_PCT", 0.0) or 0.0)
-                    result[play_type_map[play_type]] = freq_pct
-
-            self._cache_set(cache_key, result)
-            return result
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("SynergyPlayTypes failed for player_id=%s season=%s: %s: %s",
-                           player_id, season, type(exc).__name__, exc)
-            # Negative cache: remember this failure for 1 hour to avoid hammering the API
-            self._cache_set(cache_key, {}, ttl_seconds=3600)
-            return {}
-
-    def get_tracking_shots(
-        self, player_id: int, season: str = "2024-25"
-    ) -> dict[str, Any]:
-        """
-        Return shot-tracking breakdown for *player_id* using PlayerDashPtShots.
-
-        Keys returned (all float, 0.0 on failure):
-            catch_shoot_fga, pull_up_fga, total_tracked_fga,
-            avg_dribbles_before_shot
-        """
-        cache_key = f"tracking_shots:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            from nba_api.stats.endpoints import PlayerDashPtShots  # noqa: PLC0415
-
-            def _call() -> Any:
-                self._rate_limit()
-                return PlayerDashPtShots(
-                    player_id=player_id,
-                    season=season,
-                    per_mode_simple="Totals",
-                    timeout=30,
-                    headers=self._NBA_HEADERS,
-                )
-
-            endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtShots")
-            # result set 0 = GeneralShooting (dribble breakdown)
-            dribble_rows = _parse_response(endpoint, 0)
-
-            catch_shoot_fga = 0.0
-            pull_up_fga = 0.0
-            total_drib_fga = 0.0
-            weighted_drib_sum = 0.0
-
-            dribble_count_map = {
-                "0 Dribbles": 0.0,
-                "1 Dribble": 1.0,
-                "2 Dribbles": 2.0,
-                "3-6 Dribbles": 4.5,
-                "7+ Dribbles": 8.0,
-            }
-
-            for row in dribble_rows:
-                drib_label = str(row.get("DRIBBLE_RANGE", "") or "")
-                fga = float(row.get("FGA", 0) or 0)
-                drib_value = dribble_count_map.get(drib_label, -1.0)
-                if drib_value < 0:
-                    continue
-                total_drib_fga += fga
-                weighted_drib_sum += fga * drib_value
-                if drib_value == 0.0:
-                    catch_shoot_fga += fga
-                elif drib_value >= 1.0:
-                    pull_up_fga += fga
-
-            avg_dribbles = (
-                weighted_drib_sum / total_drib_fga if total_drib_fga > 0 else 0.0
-            )
-
-            result = {
-                "catch_shoot_fga": catch_shoot_fga,
-                "pull_up_fga": pull_up_fga,
-                "total_tracked_fga": total_drib_fga,
-                "avg_dribbles_before_shot": avg_dribbles,
-            }
-            self._cache_set(cache_key, result)
-            return result
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("PlayerDashPtShots failed for player_id=%s season=%s: %s: %s",
-                           player_id, season, type(exc).__name__, exc)
-            # Negative cache: remember this failure for 1 hour to avoid hammering the API
-            self._cache_set(cache_key, {}, ttl_seconds=3600)
-            return {}
-
-    def get_hustle_stats(
-        self, player_id: int, season: str = "2024-25"
-    ) -> dict[str, Any]:
-        """
-        Return hustle stats for *player_id* using LeagueHustleStatsPlayer.
-
-        Keys returned (all float, 0.0 on failure):
-            deflections, contested_shots_2pt, contested_shots_3pt,
-            charges_drawn, loose_balls_recovered, screen_assists, gp
-        """
-        cache_key = f"hustle_stats:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            from nba_api.stats.endpoints import LeagueHustleStatsPlayer  # noqa: PLC0415
-
-            def _call() -> Any:
-                self._rate_limit()
-                return LeagueHustleStatsPlayer(
-                    season=season,
-                    per_mode_time="PerGame",
-                    timeout=30,
-                    headers=self._NBA_HEADERS,
-                )
-
-            endpoint = self._with_retry(_call, endpoint_name="LeagueHustleStatsPlayer")
-            rows = _parse_response(endpoint, 0)
-            player_row = next(
-                (r for r in rows if r.get("PLAYER_ID") == player_id), None
-            )
-            if not player_row:
-                # Negative cache: player not in response for 1 hour
-                self._cache_set(cache_key, {}, ttl_seconds=3600)
-                return {}
-
-            result = {
-                "deflections": float(player_row.get("DEFLECTIONS", 0.0) or 0.0),
-                "contested_shots_2pt": float(
-                    player_row.get("CONTESTED_SHOTS_2PT", 0.0) or 0.0
-                ),
-                "contested_shots_3pt": float(
-                    player_row.get("CONTESTED_SHOTS_3PT", 0.0) or 0.0
-                ),
-                "charges_drawn": float(player_row.get("CHARGES_DRAWN", 0.0) or 0.0),
-                "loose_balls_recovered": float(
-                    player_row.get("LOOSE_BALLS_RECOVERED", 0.0) or 0.0
-                ),
-                "screen_assists": float(player_row.get("SCREEN_ASSISTS", 0.0) or 0.0),
-                "gp": float(player_row.get("G", 0.0) or 0.0),
-            }
-            self._cache_set(cache_key, result)
-            return result
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("LeagueHustleStatsPlayer failed for player_id=%s season=%s: %s: %s",
-                           player_id, season, type(exc).__name__, exc)
-            # Negative cache: remember this failure for 1 hour to avoid hammering the API
-            self._cache_set(cache_key, {}, ttl_seconds=3600)
-            return {}
-
-    def get_passing_tracking(
-        self, player_id: int, season: str = "2024-25"
-    ) -> dict[str, Any]:
-        """
-        Return pass-tracking data for *player_id* using PlayerDashPtPass.
-
-        Keys returned (all float, 0.0 on failure):
-            passes_made, potential_assists, ast_adjust
-        """
-        cache_key = f"passing_tracking:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            from nba_api.stats.endpoints import PlayerDashPtPass  # noqa: PLC0415
-
-            def _call() -> Any:
-                self._rate_limit()
-                return PlayerDashPtPass(
-                    player_id=player_id,
-                    season=season,
-                    per_mode_simple="PerGame",
-                    timeout=30,
-                    headers=self._NBA_HEADERS,
-                )
-
-            endpoint = self._with_retry(_call, endpoint_name="PlayerDashPtPass")
-            # result set 0 = passes made
-            rows = _parse_response(endpoint, 0)
-            if not rows:
-                # Negative cache: empty response for 1 hour
-                self._cache_set(cache_key, {}, ttl_seconds=3600)
-                return {}
-
-            # Aggregate across all pass-to targets
-            passes_made = sum(float(r.get("PASSES", 0.0) or 0.0) for r in rows)
-            potential_ast = sum(
-                float(r.get("POTENTIAL_AST", 0.0) or 0.0) for r in rows
-            )
-            ast_adjust = sum(
-                float(r.get("AST_ADJ", 0.0) or 0.0) for r in rows
-            )
-
-            result = {
-                "passes_made": passes_made,
-                "potential_assists": potential_ast,
-                "ast_adjust": ast_adjust,
-            }
-            self._cache_set(cache_key, result)
-            return result
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("PlayerDashPtPass failed for player_id=%s season=%s: %s: %s",
-                           player_id, season, type(exc).__name__, exc)
-            # Negative cache: remember this failure for 1 hour to avoid hammering the API
-            self._cache_set(cache_key, {}, ttl_seconds=3600)
-            return {}
 
     # ------------------------------------------------------------------
     # Internals
@@ -533,27 +253,12 @@ class NBAApiClient:
 
         def _call() -> Any:
             self._rate_limit()
-            return CommonAllPlayers(is_only_current_season=1, headers=self._NBA_HEADERS)
+            return CommonAllPlayers(is_only_current_season=1)
 
         endpoint = self._with_retry(_call, endpoint_name="CommonAllPlayers")
         rows = _parse_response(endpoint, 0)
-        if rows:  # Only cache non-empty results
-            self._cache_set(cache_key, rows, ttl_seconds=86400)
+        self._cache_set(cache_key, rows, ttl_seconds=86400)
         return rows
-
-    def _get_static_players(self) -> list[dict]:
-        """Return the bundled offline player list as a fallback."""
-        from nba_api.stats.static import players as static_players  # noqa: PLC0415
-
-        return [
-            {
-                "PERSON_ID": p["id"],
-                "DISPLAY_FIRST_LAST": p["full_name"],
-                "TEAM_ABBREVIATION": "",
-                "ROSTERSTATUS": 1 if p.get("is_active", False) else 0,
-            }
-            for p in static_players.get_players()
-        ]
 
     def _rate_limit(self) -> None:
         """Enforce minimum gap between consecutive API calls."""

@@ -40,18 +40,6 @@ class MockNBAClient:
         return [{"PTS": 10.0, "AST": 3.0, "REB": 5.0, "STL": 1.0, "BLK": 0.5,
                  "FG3A": 3.0, "FGA": 10.0, "FTA": 2.5, "TOV": 2.0}]
 
-    def get_play_types(self, player_id: int, season: str = "2024-25") -> dict:
-        return {}
-
-    def get_tracking_shots(self, player_id: int, season: str = "2024-25") -> dict:
-        return {}
-
-    def get_hustle_stats(self, player_id: int, season: str = "2024-25") -> dict:
-        return {}
-
-    def get_passing_tracking(self, player_id: int, season: str = "2024-25") -> dict:
-        return {}
-
     def search_player(self, name: str) -> list:
         db = {
             "curry": [{"player_id": 201939, "full_name": "Stephen Curry",
@@ -245,73 +233,3 @@ class TestTendencyValues:
                     assert field in entry, (
                         f"Player '{player['player_name']}' tendency '{key}' missing field '{field}'"
                     )
-
-    def test_generate_includes_tracking_data_status(self, client):
-        """The /generate endpoint must include a tracking_data_status field."""
-        resp = client.get("/generate/Stephen Curry")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "tracking_data_status" in data, "Missing tracking_data_status in response"
-        status = data["tracking_data_status"]
-        for key in ("play_types_available", "tracking_shots_available", "hustle_available", "passing_available"):
-            assert key in status, f"tracking_data_status missing key '{key}'"
-            assert isinstance(status[key], bool), f"tracking_data_status['{key}'] should be bool"
-
-
-class TestDebugFeaturesEndpoint:
-    def test_returns_200_for_known_player(self, client):
-        resp = client.get("/debug/features/Stephen Curry")
-        assert resp.status_code == 200
-
-    def test_returns_404_for_unknown_player(self, client):
-        resp = client.get("/debug/features/NOBODYX")
-        assert resp.status_code == 404
-
-    def test_response_has_required_fields(self, client):
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        for field in ("player_name", "player_id", "season", "features", "tracking_status",
-                      "sentinel_features", "active_features"):
-            assert field in data, f"Missing field: {field}"
-
-    def test_player_name_and_id(self, client):
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        assert data["player_name"] == "Stephen Curry"
-        assert data["player_id"] == 201939
-
-    def test_season_param(self, client):
-        resp = client.get("/debug/features/Stephen Curry?season=2023-24")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["season"] == "2023-24"
-
-    def test_tracking_status_has_all_keys(self, client):
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        tracking_status = data["tracking_status"]
-        for key in ("play_types", "tracking_shots", "hustle", "passing"):
-            assert key in tracking_status, f"tracking_status missing key '{key}'"
-            assert isinstance(tracking_status[key], bool), f"tracking_status['{key}'] should be bool"
-
-    def test_sentinel_and_active_features_are_lists(self, client):
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        assert isinstance(data["sentinel_features"], list)
-        assert isinstance(data["active_features"], list)
-
-    def test_sentinel_features_are_minus_one(self, client):
-        """Every key in sentinel_features must map to -1 in the features dict."""
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        features = data["features"]
-        for key in data["sentinel_features"]:
-            assert features[key] == -1, f"Sentinel feature '{key}' should be -1, got {features[key]}"
-
-    def test_active_features_are_not_minus_one(self, client):
-        """No key in active_features should map to -1 in the features dict."""
-        resp = client.get("/debug/features/Stephen Curry")
-        data = resp.json()
-        features = data["features"]
-        for key in data["active_features"]:
-            assert features[key] != -1, f"Active feature '{key}' should not be -1"

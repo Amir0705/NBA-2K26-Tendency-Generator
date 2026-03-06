@@ -1,10 +1,7 @@
 """Formula layer: maps feature vectors to all 99 tendency values."""
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 def scale(value: float, input_range: list, output_range: list) -> float:
@@ -54,17 +51,6 @@ class FormulaLayer:
         pf_p36 = f.get("pf_per36", 2.5)
         oreb_pct = f.get("oreb_pct_proxy", 0.1)
 
-        # Tracking data availability flags (sentinel = -1)
-        has_tracking = f.get("playtype_iso_freq", -1) >= 0
-        has_tracking_shots = f.get("tracking_catch_shoot_fga_pct", -1) >= 0
-        has_hustle = f.get("hustle_deflections_pg", -1) >= 0
-        has_passing = f.get("tracking_potential_ast_pg", -1) >= 0
-
-        logger.debug(
-            "FormulaLayer flags: has_tracking=%s, has_tracking_shots=%s, has_hustle=%s, has_passing=%s",
-            has_tracking, has_tracking_shots, has_hustle, has_passing,
-        )
-
         # Zone rates
         zra = f.get("zone_fga_rate_ra", 0.1)
         zpaint = f.get("zone_fga_rate_paint", 0.1)
@@ -100,25 +86,8 @@ class FormulaLayer:
         shot_mid_range = scale(zmid_total, [0.0, 0.35], [0, 55])
         t["shot_mid_range"] = shot_mid_range
 
-        # spot_up_shot_mid_range: use real spot-up freq when available
-        if has_tracking:
-            spot_up_freq = f.get("playtype_spot_up_freq", 0.0)
-            spot_up_mid_base = scale(spot_up_freq, [0.0, 0.30], [0, 55])
-            # Blend: real data 70%, shot-zone proxy 30%
-            t["spot_up_shot_mid_range"] = 0.7 * spot_up_mid_base + 0.3 * shot_mid_range * 0.7
-        elif has_tracking_shots:
-            cs_pct = f.get("tracking_catch_shoot_fga_pct", 0.0)
-            t["spot_up_shot_mid_range"] = shot_mid_range * (0.4 + 0.6 * cs_pct)
-        else:
-            t["spot_up_shot_mid_range"] = shot_mid_range * 0.7
-
-        # off_screen_shot_mid_range: use handoff freq when available
-        if has_tracking:
-            handoff_freq = f.get("playtype_handoff_freq", 0.0)
-            handoff_mid_base = scale(handoff_freq, [0.0, 0.15], [0, 40])
-            t["off_screen_shot_mid_range"] = 0.6 * handoff_mid_base + 0.4 * shot_mid_range * 0.6
-        else:
-            t["off_screen_shot_mid_range"] = shot_mid_range * 0.6
+        t["spot_up_shot_mid_range"] = shot_mid_range * 0.7
+        t["off_screen_shot_mid_range"] = shot_mid_range * 0.6
 
         shot_three = scale(fg3a_rate, [0.0, 0.55], [0, 60])
         t["shot_three"] = shot_three
@@ -126,39 +95,13 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category B: Three-Point Subtypes
         # ---------------------------------------------------------------
-        # spot_up_shot_three: use real spot-up freq when available
-        if has_tracking:
-            spot_up_freq = f.get("playtype_spot_up_freq", 0.0)
-            spot_up_three_base = scale(spot_up_freq, [0.0, 0.30], [0, 60])
-            t["spot_up_shot_three"] = 0.7 * spot_up_three_base + 0.3 * shot_three * 0.85
-        elif has_tracking_shots:
-            cs_pct = f.get("tracking_catch_shoot_fga_pct", 0.0)
-            t["spot_up_shot_three"] = shot_three * (0.5 + 0.85 * cs_pct)
-        else:
-            t["spot_up_shot_three"] = shot_three * 0.85
-
-        # off_screen_shot_three: use handoff freq when available
-        if has_tracking:
-            handoff_freq = f.get("playtype_handoff_freq", 0.0)
-            handoff_three_base = scale(handoff_freq, [0.0, 0.15], [0, 50])
-            t["off_screen_shot_three"] = 0.6 * handoff_three_base + 0.4 * shot_three * 0.65
-        else:
-            t["off_screen_shot_three"] = shot_three * 0.65
-
-        # transition_pull_up_three: use real transition freq when available
-        if has_tracking:
-            trans_freq = f.get("playtype_transition_freq", 0.0)
-            t["transition_pull_up_three"] = (
-                scale(trans_freq, [0.05, 0.25], [0, 35])
-                * scale(fg3a_rate, [0.15, 0.45], [0.5, 1.2])
-                * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
-            )
-        else:
-            t["transition_pull_up_three"] = (
-                scale(fg3a_rate, [0.15, 0.45], [0, 30])
-                * scale(pts_p36, [10, 30], [0.5, 1.2])
-                * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
-            )
+        t["spot_up_shot_three"] = shot_three * 0.85
+        t["off_screen_shot_three"] = shot_three * 0.65
+        t["transition_pull_up_three"] = (
+            scale(fg3a_rate, [0.15, 0.45], [0, 30])
+            * scale(pts_p36, [10, 30], [0.5, 1.2])
+            * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
+        )
 
         # ---------------------------------------------------------------
         # Category C: Contested / Advanced Shooting
@@ -175,17 +118,8 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category D: Pull-Up Shooting
         # ---------------------------------------------------------------
-        if has_tracking_shots:
-            pull_up_pct = f.get("tracking_pull_up_fga_pct", 0.0)
-            t["drive_pull_up_mid_range"] = (
-                scale(pull_up_pct, [0.0, 0.60], [0, 45]) * dribble_boost
-            )
-            t["drive_pull_up_three"] = (
-                scale(pull_up_pct * fg3a_rate, [0.0, 0.30], [0, 30]) * dribble_boost
-            )
-        else:
-            t["drive_pull_up_mid_range"] = scale(shot_mid_range, [0, 55], [0, 40]) * dribble_boost
-            t["drive_pull_up_three"] = scale(fg3a_rate, [0.0, 0.4], [0, 25]) * dribble_boost
+        t["drive_pull_up_mid_range"] = scale(shot_mid_range, [0, 55], [0, 40]) * dribble_boost
+        t["drive_pull_up_three"] = scale(fg3a_rate, [0.0, 0.4], [0, 25]) * dribble_boost
 
         # ---------------------------------------------------------------
         # Category E: Finishing
@@ -227,19 +161,8 @@ class FormulaLayer:
         else:
             drive = zone_drive * drive_boost  # Bigs: pure zone-based
         t["drive"] = drive
-        # spot_up_drive: use real spot-up freq when available
-        if has_tracking:
-            spot_up_freq = f.get("playtype_spot_up_freq", 0.0)
-            t["spot_up_drive"] = 0.6 * scale(spot_up_freq, [0.0, 0.30], [0, 35]) + 0.4 * drive * 0.7
-        else:
-            t["spot_up_drive"] = drive * 0.7
-
-        # off_screen_drive: use handoff freq when available
-        if has_tracking:
-            handoff_freq = f.get("playtype_handoff_freq", 0.0)
-            t["off_screen_drive"] = 0.6 * scale(handoff_freq, [0.0, 0.15], [0, 30]) + 0.4 * drive * 0.5
-        else:
-            t["off_screen_drive"] = drive * 0.5
+        t["spot_up_drive"] = drive * 0.7
+        t["off_screen_drive"] = drive * 0.5
         t["drive_right"] = f.get("drive_right_bias", 50.0)
 
         # ---------------------------------------------------------------
@@ -260,11 +183,7 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category K: Dribble Moves
         # ---------------------------------------------------------------
-        if has_tracking_shots:
-            avg_drib = f.get("tracking_avg_dribbles_before_shot", 0.0)
-            creation_score = scale(avg_drib, [0.5, 4.0], [5, 35]) * dribble_boost
-        else:
-            creation_score = scale(usg, [0.10, 0.30], [5, 35]) * dribble_boost
+        creation_score = scale(usg, [0.10, 0.30], [5, 35]) * dribble_boost
         t["driving_crossover"] = creation_score * 1.0
         t["driving_spin"] = creation_score * 0.8
         t["driving_step_back"] = creation_score * 0.7
@@ -281,47 +200,22 @@ class FormulaLayer:
         # Category L: Drive Finishing
         # ---------------------------------------------------------------
         t["attack_strong_on_drive"] = min(scale(fta_rate, [0.1, 0.5], [20, 65]), 65.0)
-        if has_tracking:
-            pnr_ball_freq = f.get("playtype_pnr_ball_freq", 0.0)
-            t["dish_to_open_man"] = (
-                0.6 * scale(ast_p36, [1, 10], [15, 50])
-                + 0.4 * scale(pnr_ball_freq, [0.0, 0.30], [10, 50])
-            )
-        else:
-            t["dish_to_open_man"] = scale(ast_p36, [1, 10], [15, 50])
+        t["dish_to_open_man"] = scale(ast_p36, [1, 10], [15, 50])
 
         # ---------------------------------------------------------------
         # Category M: Passing
         # ---------------------------------------------------------------
         # Flashy pass should be driven by passing ability (ast_per36), not ball-handling
         guard_flashy_bonus = 1.1 if pos in ("PG", "SG") else 1.0
-        if has_passing:
-            pot_ast_pg = f.get("tracking_potential_ast_pg", 0.0)
-            ast_to_pass = f.get("tracking_ast_to_pass_pct", 0.0)
-            # High potential assists AND low selectivity = more flashy
-            selectivity_factor = max(0.5, 1.5 - ast_to_pass * 5.0)
-            t["flashy_pass"] = (
-                scale(pot_ast_pg, [2, 15], [5, 60])
-                * guard_flashy_bonus
-                * selectivity_factor
-            )
-        else:
-            t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus
+        t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus
         t["alley_oop_pass"] = scale(ast_p36, [2, 10], [5, 35]) * (0.5 + 0.5 * dribble_boost)
 
         # ---------------------------------------------------------------
         # Category N: Post Play (17 tendencies)
         # ---------------------------------------------------------------
-        if has_tracking:
-            post_up_freq = f.get("playtype_post_up_freq", 0.0)
-            post_score = (
-                0.7 * scale(post_up_freq, [0.0, 0.25], [0, 50]) * post_factor
-                + 0.3 * scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
-            )
-        else:
-            post_score = (
-                scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
-            )
+        post_score = (
+            scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
+        )
         t["post_up"] = post_score * 1.0
         t["post_shimmy_shot"] = post_score * 0.3
         t["post_face_up"] = post_score * 0.7
@@ -343,33 +237,16 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category O: Playstyle Sliders
         # ---------------------------------------------------------------
-        if has_tracking:
-            pnr_roll_freq = f.get("playtype_pnr_roll_freq", 0.0)
-            if pos in ("PG", "SG"):
-                t["roll_vs_pop"] = 40 + scale(fg3a_rate, [0.15, 0.50], [0, 25])
-            else:
-                # More roll man freq = higher roll_vs_pop (rolls more)
-                t["roll_vs_pop"] = 25 + scale(pnr_roll_freq, [0.0, 0.25], [0, 50])
+        if pos in ("PG", "SG"):
+            t["roll_vs_pop"] = 40 + scale(fg3a_rate, [0.15, 0.50], [0, 25])
         else:
-            if pos in ("PG", "SG"):
-                t["roll_vs_pop"] = 40 + scale(fg3a_rate, [0.15, 0.50], [0, 25])
-            else:
-                t["roll_vs_pop"] = 75 - scale(fg3a_rate, [0.0, 0.3], [0, 50])
-
-        if has_tracking:
-            trans_freq = f.get("playtype_transition_freq", 0.0)
-            t["transition_spot_up"] = scale(trans_freq, [0.05, 0.30], [30, 75])
-        else:
-            t["transition_spot_up"] = scale(fg3a_rate, [0.0, 0.4], [30, 70])
+            t["roll_vs_pop"] = 75 - scale(fg3a_rate, [0.0, 0.3], [0, 50])
+        t["transition_spot_up"] = scale(fg3a_rate, [0.0, 0.4], [30, 70])
 
         # ---------------------------------------------------------------
         # Category P: Isolation
         # ---------------------------------------------------------------
-        if has_tracking:
-            iso_freq = f.get("playtype_iso_freq", 0.0)
-            iso_base = scale(iso_freq, [0.0, 0.15], [0, 40]) * dribble_boost
-        else:
-            iso_base = scale(usg, [0.10, 0.32], [0, 40]) * dribble_boost
+        iso_base = scale(usg, [0.10, 0.32], [0, 40]) * dribble_boost
         t["iso_vs_elite_defender"] = iso_base * 0.5
         t["iso_vs_good_defender"] = iso_base * 0.7
         t["iso_vs_average_defender"] = iso_base * 0.85
@@ -388,45 +265,20 @@ class FormulaLayer:
         # Steal tendency: guards get more on-ball/interception credit per steal
         steal_pos_scale = {"PG": 1.0, "SG": 0.9, "SF": 0.85, "PF": 0.7, "C": 0.55}
         steal_scale = steal_pos_scale.get(pos, 0.85)
-        if has_hustle:
-            deflections_pg = f.get("hustle_deflections_pg", 0.0)
-            t["pass_interception"] = (
-                0.6 * scale(deflections_pg, [0.5, 4.0], [15, 55]) * steal_scale
-                + 0.4 * scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
-            )
-            t["on_ball_steal"] = (
-                0.4 * scale(deflections_pg, [0.5, 4.0], [15, 55]) * steal_scale
-                + 0.6 * scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
-            )
-        else:
-            t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
-            t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
-
+        t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
+        t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
         pos_contest_base = {"PG": 30, "SG": 32, "SF": 33, "PF": 35, "C": 38}
-        if has_hustle:
-            contested_shots_pg = f.get("hustle_contested_shots_pg", 0.0)
-            t["contest_shot"] = (
-                pos_contest_base.get(pos, 33)
-                + scale(contested_shots_pg, [0.5, 5.0], [0, 20])
-            )
-        else:
-            t["contest_shot"] = (
-                pos_contest_base.get(pos, 33)
-                + scale(blk_p36, [0.0, 2.5], [0, 15])
-                + scale(stl_p36, [0.3, 2.0], [0, 10])
-            )
-
+        t["contest_shot"] = (
+            pos_contest_base.get(pos, 33)
+            + scale(blk_p36, [0.0, 2.5], [0, 15])
+            + scale(stl_p36, [0.3, 2.0], [0, 10])
+        )
         block_scale = profile["block_scale"]
         raw_block = scale(blk_p36, [0.0, 3.5], [5, 55])
         t["block_shot"] = raw_block * (0.6 + 0.4 * block_scale)
-
-        if has_hustle:
-            charges_drawn_pg = f.get("hustle_charges_drawn_pg", 0.0)
-            t["take_charge"] = scale(charges_drawn_pg, [0.0, 0.5], [5, 35])
-        else:
-            t["take_charge"] = (
-                scale(pf_p36, [1.5, 4.0], [5, 30]) * (1 - post_factor * 0.3)
-            )
+        t["take_charge"] = (
+            scale(pf_p36, [1.5, 4.0], [5, 30]) * (1 - post_factor * 0.3)
+        )
 
         # ---------------------------------------------------------------
         # Category S: Fouling

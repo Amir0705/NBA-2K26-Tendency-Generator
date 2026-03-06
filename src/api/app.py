@@ -163,50 +163,7 @@ def generate_by_name(player_name: str, season: str = "2024-25") -> dict[str, Any
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to generate tendencies: {exc}") from exc
 
-    response = _build_tendency_response(result, full_name, pid, team, season)
-    response["tracking_data_status"] = result.get("tracking_data_status", {})
-    return response
-
-
-@app.get("/debug/features/{player_name}")
-def debug_features(player_name: str, season: str = "2024-25") -> dict[str, Any]:
-    """Return raw features and tracking data status for a player (debug endpoint)."""
-    pipeline = _get_pipeline()
-    results = pipeline.search_player(player_name)
-    if not results:
-        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
-
-    name_lower = player_name.lower()
-    match = next((r for r in results if r.get("full_name", "").lower() == name_lower), results[0])
-    pid = match["player_id"]
-    full_name = match["full_name"]
-
-    try:
-        features = pipeline._features.build_features(pid, season=season)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to build features: {exc}") from exc
-
-    tracking_status = {
-        "play_types": features.get("playtype_iso_freq", -1) != -1,
-        "tracking_shots": features.get("tracking_catch_shoot_fga_pct", -1) != -1,
-        "hustle": features.get("hustle_deflections_pg", -1) != -1,
-        "passing": features.get("tracking_potential_ast_pg", -1) != -1,
-    }
-
-    # Separate sentinel vs active features (only scalar features for JSON serialisability)
-    scalar_features = {k: v for k, v in features.items() if not isinstance(v, (dict, list))}
-    sentinel_features = [k for k, v in scalar_features.items() if v == -1]
-    active_features = [k for k, v in scalar_features.items() if v != -1]
-
-    return {
-        "player_name": full_name,
-        "player_id": pid,
-        "season": season,
-        "features": features,
-        "tracking_status": tracking_status,
-        "sentinel_features": sentinel_features,
-        "active_features": active_features,
-    }
+    return _build_tendency_response(result, full_name, pid, team, season)
 
 
 @app.get("/team/{team_abbr}")
