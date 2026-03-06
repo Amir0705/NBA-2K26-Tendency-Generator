@@ -71,7 +71,7 @@ class ShotZoneAnalyzer:
         zone_fgm: dict[str, int] = {z: 0 for z in ZONES}
 
         # Sub-zone accumulators
-        close_counts: dict[str, int] = {"left": 0, "middle": 0, "right": 0}
+        close_loc_xs: list[float] = []
         mid_area_counts: dict[str, int] = {
             "left": 0, "left_center": 0, "center": 0, "right_center": 0, "right": 0
         }
@@ -90,10 +90,9 @@ class ShotZoneAnalyzer:
                 zone_fga[zone] += 1
                 zone_fgm[zone] += made
 
-            # Sub-zone: close (ra + paint → left/middle/right)
+            # Collect LOC_X for close-range shots (RA + Paint)
             if basic in ("Restricted Area", "In The Paint (Non-RA)"):
-                close_key = _area_to_close_key(basic, area, loc_x)
-                close_counts[close_key] += 1
+                close_loc_xs.append(float(loc_x))
 
             # Sub-zone: mid-range (5-way area split)
             if basic == "Mid-Range":
@@ -105,10 +104,22 @@ class ShotZoneAnalyzer:
                 area_key = _area_to_three_key(basic, area)
                 three_area_counts[area_key] += 1
 
-        # Bayesian prior: add virtual shots to prevent extreme distributions
-        _CLOSE_PRIOR = 5
-        for k in close_counts:
-            close_counts[k] += _CLOSE_PRIOR
+        # Compute close sub-zone distribution using percentile terciles
+        close_counts: dict[str, int] = {"left": 0, "middle": 0, "right": 0}
+        if close_loc_xs:
+            sorted_xs = sorted(close_loc_xs)
+            n = len(sorted_xs)
+            p33_idx = max(0, n // 3 - 1)
+            p67_idx = max(0, 2 * n // 3 - 1)
+            p33 = sorted_xs[p33_idx]
+            p67 = sorted_xs[p67_idx]
+            for x in close_loc_xs:
+                if x <= p33:
+                    close_counts["left"] += 1
+                elif x >= p67:
+                    close_counts["right"] += 1
+                else:
+                    close_counts["middle"] += 1
 
         total_fga = max(sum(zone_fga.values()), 1)
         total_min = max(total_minutes, 1)
