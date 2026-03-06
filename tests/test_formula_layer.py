@@ -141,7 +141,7 @@ class TestFormulaLayerGenerate:
         )
         assert total == pytest.approx(result["shot_close"], abs=1.0)
 
-    def test_sub_zone_mid_sums_to_parent(self, formula):
+    def test_sub_zone_mid_is_chart_driven(self, formula):
         result = formula.generate(_minimal_features())
         total = (
             result["shot_mid_left"]
@@ -150,9 +150,9 @@ class TestFormulaLayerGenerate:
             + result["shot_mid_right_center"]
             + result["shot_mid_right"]
         )
-        assert total == pytest.approx(result["shot_mid_range"], abs=1.0)
+        assert total == pytest.approx(100.0, abs=1.0)
 
-    def test_sub_zone_three_sums_to_parent(self, formula):
+    def test_sub_zone_three_is_chart_driven(self, formula):
         result = formula.generate(_minimal_features())
         total = (
             result["shot_three_left"]
@@ -161,8 +161,7 @@ class TestFormulaLayerGenerate:
             + result["shot_three_right_center"]
             + result["shot_three_right"]
         )
-        # With uniform distribution all zones equal, no max() floors are triggered
-        assert total == pytest.approx(result["shot_three"], abs=1.0)
+        assert total == pytest.approx(100.0, abs=1.0)
 
     def test_sub_zones_do_not_exceed_parent(self, formula):
         result = formula.generate(_minimal_features())
@@ -171,19 +170,7 @@ class TestFormulaLayerGenerate:
         assert result["shot_close_middle"] <= parent_close
         assert result["shot_close_right"] <= parent_close
 
-        parent_mid = result["shot_mid_range"]
-        assert result["shot_mid_left"] <= parent_mid
-        assert result["shot_mid_left_center"] <= parent_mid
-        assert result["shot_mid_center"] <= parent_mid
-        assert result["shot_mid_right_center"] <= parent_mid
-        assert result["shot_mid_right"] <= parent_mid
-
-        parent_three = result["shot_three"]
-        assert result["shot_three_left"] <= parent_three
-        assert result["shot_three_left_center"] <= parent_three
-        assert result["shot_three_center"] <= parent_three
-        assert result["shot_three_right_center"] <= parent_three
-        assert result["shot_three_right"] <= parent_three
+        # Mid/three sub-zones are chart-driven and may exceed their parent values.
 
     def test_roll_vs_pop_guard_varies_with_three_point_rate(self, formula):
         low_3pt = _minimal_features("PG")

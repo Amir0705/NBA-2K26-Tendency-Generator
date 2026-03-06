@@ -152,28 +152,6 @@ class Guardrails:
                 "shot_close sub-zones",
                 "shot_close",
             ),
-            (
-                [
-                    "shot_mid_left",
-                    "shot_mid_left_center",
-                    "shot_mid_center",
-                    "shot_mid_right_center",
-                    "shot_mid_right",
-                ],
-                "shot_mid sub-zones",
-                "shot_mid_range",
-            ),
-            (
-                [
-                    "shot_three_left",
-                    "shot_three_left_center",
-                    "shot_three_center",
-                    "shot_three_right_center",
-                    "shot_three_right",
-                ],
-                "shot_three sub-zones",
-                "shot_three",
-            ),
         ]
         for family_keys, family_name, parent_key in sub_zone_families:
             parent_val = max(0.0, float(tendencies.get(parent_key, 0.0)))

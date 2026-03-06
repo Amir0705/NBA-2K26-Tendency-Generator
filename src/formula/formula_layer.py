@@ -521,8 +521,9 @@ class FormulaLayer:
 
         # ---------------------------------------------------------------
         # Category T: Sub-Zone Distributions (13 tendencies)
-        # Sub-zones are scaled by their parent tendency so that no sub-zone
-        # can exceed the parent value and all sub-zones sum to the parent.
+        # Close remains parent-scaled for consistency.
+        # Mid/Three are chart-driven shape values and are not forced to sum
+        # to their parent tendencies.
         # ---------------------------------------------------------------
         # Close sub-zones: scale by shot_close parent
         dist_close_shaped = _shape_close_distribution(dist_close)
@@ -531,22 +532,21 @@ class FormulaLayer:
         t["shot_close_middle"] = dist_close_shaped["middle"] * _close_parent / 100
         t["shot_close_right"] = dist_close_shaped["right"] * _close_parent / 100
 
-        # Mid sub-zones: scale by shot_mid_range parent
+        # Mid sub-zones: chart-driven shape (independent from shot_mid_range)
         dist_mid_shaped = _shape_five_zone_distribution(dist_mid, gamma=1.25)
-        _mid_parent = t["shot_mid_range"]
-        t["shot_mid_left"] = dist_mid_shaped.get("left", 20.0) * _mid_parent / 100
-        t["shot_mid_left_center"] = dist_mid_shaped.get("left_center", 20.0) * _mid_parent / 100
-        t["shot_mid_center"] = dist_mid_shaped.get("center", 20.0) * _mid_parent / 100
-        t["shot_mid_right_center"] = dist_mid_shaped.get("right_center", 20.0) * _mid_parent / 100
-        t["shot_mid_right"] = dist_mid_shaped.get("right", 20.0) * _mid_parent / 100
+        t["shot_mid_left"] = dist_mid_shaped.get("left", 20.0)
+        t["shot_mid_left_center"] = dist_mid_shaped.get("left_center", 20.0)
+        t["shot_mid_center"] = dist_mid_shaped.get("center", 20.0)
+        t["shot_mid_right_center"] = dist_mid_shaped.get("right_center", 20.0)
+        t["shot_mid_right"] = dist_mid_shaped.get("right", 20.0)
 
-        # Three sub-zones: scale by shot_three parent
-        _three_parent = t["shot_three"]
-        t["shot_three_left"] = max(dist_three.get("left", 20.0), 8.0) * _three_parent / 100
-        t["shot_three_left_center"] = dist_three.get("left_center", 20.0) * _three_parent / 100
-        t["shot_three_center"] = dist_three.get("center", 20.0) * _three_parent / 100
-        t["shot_three_right_center"] = dist_three.get("right_center", 20.0) * _three_parent / 100
-        t["shot_three_right"] = max(dist_three.get("right", 20.0), 8.0) * _three_parent / 100
+        # Three sub-zones: chart-driven shape (independent from shot_three)
+        dist_three_shaped = _shape_five_zone_distribution(dist_three, gamma=1.15)
+        t["shot_three_left"] = max(dist_three_shaped.get("left", 20.0), 8.0)
+        t["shot_three_left_center"] = dist_three_shaped.get("left_center", 20.0)
+        t["shot_three_center"] = dist_three_shaped.get("center", 20.0)
+        t["shot_three_right_center"] = dist_three_shaped.get("right_center", 20.0)
+        t["shot_three_right"] = max(dist_three_shaped.get("right", 20.0), 8.0)
 
         return t
 

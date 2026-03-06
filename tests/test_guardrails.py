@@ -266,7 +266,7 @@ class TestSubZoneParentAwareNormalization:
         assert any("shot_close" in v["rule"] for v in violations)
 
     def test_mid_sub_zones_normalize_to_parent(self, guardrails):
-        """Mid sub-zones are parent-normalized by guardrails when far off."""
+        """Mid sub-zones remain chart-driven (not parent-normalized by guardrails)."""
         t = _base_tendencies()
         t["shot_mid_range"] = 25
         # Sub-zones sum to 100 (5 × 20), parent is 25 — outside tolerance
@@ -276,13 +276,11 @@ class TestSubZoneParentAwareNormalization:
         violations = guardrails.check(t)
         total = sum(t[k] for k in ("shot_mid_left", "shot_mid_left_center", "shot_mid_center",
                                     "shot_mid_right_center", "shot_mid_right"))
-        assert abs(total - 25) <= max(5.0, 25 * 0.1), (
-            f"Expected sum ≈25 after normalization, got {total}"
-        )
-        assert any("shot_mid" in v.get("rule", "") for v in violations)
+        assert total == 100
+        assert not any("shot_mid sub-zones" in v.get("rule", "") for v in violations)
 
     def test_three_sub_zones_normalize_to_parent(self, guardrails):
-        """Three sub-zones are parent-normalized by guardrails when far off."""
+        """Three sub-zones remain chart-driven (not parent-normalized by guardrails)."""
         t = _base_tendencies()
         t["shot_three"] = 20
         # Sub-zones sum to 100 (5 × 20), parent is 20 — outside tolerance
@@ -293,10 +291,8 @@ class TestSubZoneParentAwareNormalization:
         total = sum(t[k] for k in ("shot_three_left", "shot_three_left_center",
                                     "shot_three_center", "shot_three_right_center",
                                     "shot_three_right"))
-        assert abs(total - 20) <= max(5.0, 20 * 0.1), (
-            f"Expected sum ≈20 after normalization, got {total}"
-        )
-        assert any("shot_three" in v.get("rule", "") for v in violations)
+        assert total == 100
+        assert not any("shot_three sub-zones" in v.get("rule", "") for v in violations)
 
     def test_close_sub_zones_already_summing_to_parent_no_violation(self, guardrails):
         """No violation when close sub-zones already sum to parent."""

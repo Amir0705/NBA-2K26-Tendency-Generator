@@ -108,39 +108,34 @@ def _round_mid_family(
     parent_key: str,
     family_keys: list[str],
 ) -> None:
-    """Round mid sub-zones with stronger shaping and anti-zero lane floors."""
-    parent_rounded = rounded.get(parent_key)
-    if parent_rounded is None:
-        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
-        rounded[parent_key] = parent_rounded
+    """Round mid sub-zones shape-first (independent from parent total)."""
+    _ = parent_key
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+    if total_raw <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
 
-    parent_rounded = max(0, min(100, parent_rounded))
-    target_units = parent_rounded // 5
+    target_units = max(0, round(total_raw / 5))
     if target_units <= 0:
         for key in family_keys:
             rounded[key] = 0
         return
 
-    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
-    total_raw = sum(family_raw)
-    if total_raw <= 0:
-        base = target_units // len(family_keys)
-        remainder = target_units % len(family_keys)
-        units = [base + (1 if i < remainder else 0) for i in range(len(family_keys))]
-    else:
-        gamma = 1.35
-        shares = [value / total_raw for value in family_raw]
-        shaped = [max(1e-6, share) ** gamma for share in shares]
-        shaped_total = sum(shaped)
-        ideal_units = [value / shaped_total * target_units for value in shaped]
-        units = [int(u) for u in ideal_units]
-        remainder = target_units - sum(units)
-        fractions = sorted(
-            [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
-            reverse=True,
-        )
-        for idx in range(remainder):
-            units[fractions[idx][1]] += 1
+    gamma = 1.35
+    shares = [value / total_raw for value in family_raw]
+    shaped = [max(1e-6, share) ** gamma for share in shares]
+    shaped_total = sum(shaped)
+    ideal_units = [value / shaped_total * target_units for value in shaped]
+    units = [int(u) for u in ideal_units]
+    remainder = target_units - sum(units)
+    fractions = sorted(
+        [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+        reverse=True,
+    )
+    for idx in range(remainder):
+        units[fractions[idx][1]] += 1
 
     def _steal_one_unit(exclude_idx: int) -> bool:
         donors = sorted(
@@ -175,39 +170,34 @@ def _round_three_family(
     parent_key: str,
     family_keys: list[str],
 ) -> None:
-    """Round three sub-zones with shaping and wing soft-floor logic."""
-    parent_rounded = rounded.get(parent_key)
-    if parent_rounded is None:
-        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
-        rounded[parent_key] = parent_rounded
+    """Round three sub-zones shape-first with wing soft-floor logic."""
+    _ = parent_key
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+    if total_raw <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
 
-    parent_rounded = max(0, min(100, parent_rounded))
-    target_units = parent_rounded // 5
+    target_units = max(0, round(total_raw / 5))
     if target_units <= 0:
         for key in family_keys:
             rounded[key] = 0
         return
 
-    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
-    total_raw = sum(family_raw)
-    if total_raw <= 0:
-        base = target_units // len(family_keys)
-        remainder = target_units % len(family_keys)
-        units = [base + (1 if i < remainder else 0) for i in range(len(family_keys))]
-    else:
-        gamma = 1.20
-        shares = [value / total_raw for value in family_raw]
-        shaped = [max(1e-6, share) ** gamma for share in shares]
-        shaped_total = sum(shaped)
-        ideal_units = [value / shaped_total * target_units for value in shaped]
-        units = [int(u) for u in ideal_units]
-        remainder = target_units - sum(units)
-        fractions = sorted(
-            [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
-            reverse=True,
-        )
-        for idx in range(remainder):
-            units[fractions[idx][1]] += 1
+    gamma = 1.20
+    shares = [value / total_raw for value in family_raw]
+    shaped = [max(1e-6, share) ** gamma for share in shares]
+    shaped_total = sum(shaped)
+    ideal_units = [value / shaped_total * target_units for value in shaped]
+    units = [int(u) for u in ideal_units]
+    remainder = target_units - sum(units)
+    fractions = sorted(
+        [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+        reverse=True,
+    )
+    for idx in range(remainder):
+        units[fractions[idx][1]] += 1
 
     def _steal_from_core() -> bool:
         donors = sorted(
