@@ -71,7 +71,7 @@ class ShotZoneAnalyzer:
         zone_fgm: dict[str, int] = {z: 0 for z in ZONES}
 
         # Sub-zone accumulators
-        close_loc_xs: list[float] = []
+        close_counts: dict[str, int] = {"left": 0, "middle": 0, "right": 0}
         mid_area_counts: dict[str, int] = {
             "left": 0, "left_center": 0, "center": 0, "right_center": 0, "right": 0
         }
@@ -90,9 +90,10 @@ class ShotZoneAnalyzer:
                 zone_fga[zone] += 1
                 zone_fgm[zone] += made
 
-            # Collect LOC_X for close-range shots (RA + Paint)
+            # Sub-zone: close (RA + Paint)
             if basic in ("Restricted Area", "In The Paint (Non-RA)"):
-                close_loc_xs.append(float(loc_x))
+                close_key = _area_to_close_key(basic, area, loc_x)
+                close_counts[close_key] += 1
 
             # Sub-zone: mid-range (5-way area split)
             if basic == "Mid-Range":
@@ -103,23 +104,6 @@ class ShotZoneAnalyzer:
             if basic in ("Above the Break 3", "Left Corner 3", "Right Corner 3"):
                 area_key = _area_to_three_key(basic, area)
                 three_area_counts[area_key] += 1
-
-        # Compute close sub-zone distribution using percentile terciles
-        close_counts: dict[str, int] = {"left": 0, "middle": 0, "right": 0}
-        if close_loc_xs:
-            sorted_xs = sorted(close_loc_xs)
-            n = len(sorted_xs)
-            p33_idx = max(0, n // 3 - 1)
-            p67_idx = max(0, 2 * n // 3 - 1)
-            p33 = sorted_xs[p33_idx]
-            p67 = sorted_xs[p67_idx]
-            for x in close_loc_xs:
-                if x <= p33:
-                    close_counts["left"] += 1
-                elif x >= p67:
-                    close_counts["right"] += 1
-                else:
-                    close_counts["middle"] += 1
 
         total_fga = max(sum(zone_fga.values()), 1)
         total_min = max(total_minutes, 1)
@@ -169,16 +153,17 @@ def _area_to_close_key(basic: str, area: str, loc_x: float) -> str:
     """Map a close-range shot to left/middle/right sub-zone.
 
     For Restricted Area shots, the NBA API always returns area="Center(C)"
-    so we must use LOC_X coordinates. For Paint (Non-RA) shots, the API
-    provides proper area breakdown (Left Side, Right Side, etc.), so we
-    use area as primary with LOC_X fallback.
+    so we must use LOC_X coordinates with ±30 threshold.
+    For Paint (Non-RA) shots, the API provides proper area breakdown
+    (Left Side, Right Side, etc.), so we use area as primary classifier
+    with LOC_X fallback.
     """
-    # Restricted Area: always use LOC_X (area is always "Center(C)")
     basic = basic.strip()
+    # Restricted Area: always use LOC_X (area is always "Center(C)")
     if basic == "Restricted Area":
-        if loc_x < -8:
+        if loc_x < -30:
             return "left"
-        if loc_x > 8:
+        if loc_x > 30:
             return "right"
         return "middle"
 
@@ -192,9 +177,9 @@ def _area_to_close_key(basic: str, area: str, loc_x: float) -> str:
         return "middle"
 
     # Fallback: use LOC_X when area is missing or unrecognized
-    if loc_x < -8:
+    if loc_x < -30:
         return "left"
-    if loc_x > 8:
+    if loc_x > 30:
         return "right"
     return "middle"
 
