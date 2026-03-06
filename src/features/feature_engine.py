@@ -1,12 +1,9 @@
 """Feature engineering: transforms raw NBA stats into a feature vector."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from src.features.shot_zones import ShotZoneAnalyzer, ZONES
-
-logger = logging.getLogger(__name__)
 
 # Position one-hot keys
 _POSITIONS = ("PG", "SG", "SF", "PF", "C")
@@ -27,16 +24,6 @@ def _map_position(raw: str) -> str:
     """Map nba_api position string to canonical position code."""
     key = raw.strip().lower()
     return _POSITION_MAP.get(key, "SF")
-
-
-def _previous_season(season: str) -> str:
-    """Convert '2024-25' to '2023-24'."""
-    try:
-        start_year = int(season.split("-")[0])
-        end_year_short = int(season.split("-")[1])
-        return f"{start_year - 1}-{(end_year_short - 1) % 100:02d}"
-    except (ValueError, IndexError):
-        return "2023-24"
 
 
 def _height_to_inches(height_str: str) -> int:
@@ -95,56 +82,6 @@ class FeatureEngine:
         info = self._client.get_player_info(player_id)
         stats = self._client.get_player_stats(player_id, season=season)
         shot_chart = self._client.get_shot_chart(player_id, season=season)
-
-        # Fetch tracking data — graceful degradation on failure
-        try:
-            play_types = self._client.get_play_types(player_id, season=season)
-            if not play_types:
-                prev_season = _previous_season(season)
-                play_types = self._client.get_play_types(player_id, season=prev_season)
-                if play_types:
-                    logger.info("Using fallback season %s for play_types data (player_id=%s)",
-                                prev_season, player_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("play_types tracking data failed for player_id=%s: %s: %s",
-                           player_id, type(exc).__name__, exc)
-            play_types = {}
-        try:
-            tracking_shots = self._client.get_tracking_shots(player_id, season=season)
-            if not tracking_shots:
-                prev_season = _previous_season(season)
-                tracking_shots = self._client.get_tracking_shots(player_id, season=prev_season)
-                if tracking_shots:
-                    logger.info("Using fallback season %s for tracking_shots data (player_id=%s)",
-                                prev_season, player_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("tracking_shots data failed for player_id=%s: %s: %s",
-                           player_id, type(exc).__name__, exc)
-            tracking_shots = {}
-        try:
-            hustle = self._client.get_hustle_stats(player_id, season=season)
-            if not hustle:
-                prev_season = _previous_season(season)
-                hustle = self._client.get_hustle_stats(player_id, season=prev_season)
-                if hustle:
-                    logger.info("Using fallback season %s for hustle_stats data (player_id=%s)",
-                                prev_season, player_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("hustle_stats data failed for player_id=%s: %s: %s",
-                           player_id, type(exc).__name__, exc)
-            hustle = {}
-        try:
-            passing = self._client.get_passing_tracking(player_id, season=season)
-            if not passing:
-                prev_season = _previous_season(season)
-                passing = self._client.get_passing_tracking(player_id, season=prev_season)
-                if passing:
-                    logger.info("Using fallback season %s for passing_tracking data (player_id=%s)",
-                                prev_season, player_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("passing_tracking data failed for player_id=%s: %s: %s",
-                           player_id, type(exc).__name__, exc)
-            passing = {}
 
         # --- Player info ---
         position = _map_position(info.get("position", ""))
@@ -245,69 +182,6 @@ class FeatureEngine:
         # --- Position one-hot ---
         pos_flags = {f"is_{p.lower()}": (position == p) for p in _POSITIONS}
 
-        # --- Play-type features (from SynergyPlayTypes) ---
-        # Sentinel: -1 means "no tracking data available"
-        has_play_types = bool(play_types)
-        playtype_iso_freq = float(play_types.get("iso_freq", -1)) if has_play_types else -1.0
-        playtype_pnr_ball_freq = float(play_types.get("pnr_ball_freq", -1)) if has_play_types else -1.0
-        playtype_pnr_roll_freq = float(play_types.get("pnr_roll_freq", -1)) if has_play_types else -1.0
-        playtype_post_up_freq = float(play_types.get("post_up_freq", -1)) if has_play_types else -1.0
-        playtype_spot_up_freq = float(play_types.get("spot_up_freq", -1)) if has_play_types else -1.0
-        playtype_cut_freq = float(play_types.get("cut_freq", -1)) if has_play_types else -1.0
-        playtype_transition_freq = float(play_types.get("transition_freq", -1)) if has_play_types else -1.0
-        playtype_handoff_freq = float(play_types.get("handoff_freq", -1)) if has_play_types else -1.0
-
-        # --- Tracking shot features (from PlayerDashPtShots) ---
-        has_tracking_shots = bool(tracking_shots)
-        _tracked_fga = float(tracking_shots.get("total_tracked_fga", 0.0))
-        if has_tracking_shots and _tracked_fga > 0:
-            tracking_catch_shoot_fga_pct = (
-                float(tracking_shots.get("catch_shoot_fga", 0.0)) / _tracked_fga
-            )
-            tracking_pull_up_fga_pct = (
-                float(tracking_shots.get("pull_up_fga", 0.0)) / _tracked_fga
-            )
-            tracking_avg_dribbles_before_shot = float(
-                tracking_shots.get("avg_dribbles_before_shot", -1.0)
-            )
-        else:
-            tracking_catch_shoot_fga_pct = -1.0
-            tracking_pull_up_fga_pct = -1.0
-            tracking_avg_dribbles_before_shot = -1.0
-
-        # --- Hustle features (from LeagueHustleStatsPlayer) ---
-        has_hustle = bool(hustle)
-        if has_hustle:
-            hustle_deflections_pg = float(hustle.get("deflections", -1.0))
-            hustle_contested_shots_pg = (
-                float(hustle.get("contested_shots_2pt", 0.0))
-                + float(hustle.get("contested_shots_3pt", 0.0))
-            )
-            hustle_charges_drawn_pg = float(hustle.get("charges_drawn", -1.0))
-            hustle_screen_assists_pg = float(hustle.get("screen_assists", -1.0))
-            hustle_loose_balls_pg = float(hustle.get("loose_balls_recovered", -1.0))
-        else:
-            hustle_deflections_pg = -1.0
-            hustle_contested_shots_pg = -1.0
-            hustle_charges_drawn_pg = -1.0
-            hustle_screen_assists_pg = -1.0
-            hustle_loose_balls_pg = -1.0
-
-        # --- Pass tracking features (from PlayerDashPtPass) ---
-        has_passing = bool(passing)
-        if has_passing:
-            tracking_passes_made_pg = float(passing.get("passes_made", -1.0))
-            tracking_potential_ast_pg = float(passing.get("potential_assists", -1.0))
-            _passes = float(passing.get("passes_made", 0.0))
-            _ast_adj = float(passing.get("ast_adjust", 0.0))
-            tracking_ast_to_pass_pct = (
-                _ast_adj / _passes if _passes > 0 else -1.0
-            )
-        else:
-            tracking_passes_made_pg = -1.0
-            tracking_potential_ast_pg = -1.0
-            tracking_ast_to_pass_pct = -1.0
-
         features: dict[str, Any] = {
             # Player info
             "position": position,
@@ -374,29 +248,6 @@ class FeatureEngine:
             "has_shot_chart": has_shot_chart,
             "low_minutes": (gp < 5 or min_pg < 5),
             "games_played": gp,
-            # Play-type features (SynergyPlayTypes) — -1 = not available
-            "playtype_iso_freq": playtype_iso_freq,
-            "playtype_pnr_ball_freq": playtype_pnr_ball_freq,
-            "playtype_pnr_roll_freq": playtype_pnr_roll_freq,
-            "playtype_post_up_freq": playtype_post_up_freq,
-            "playtype_spot_up_freq": playtype_spot_up_freq,
-            "playtype_cut_freq": playtype_cut_freq,
-            "playtype_transition_freq": playtype_transition_freq,
-            "playtype_handoff_freq": playtype_handoff_freq,
-            # Tracking shot features (PlayerDashPtShots) — -1 = not available
-            "tracking_catch_shoot_fga_pct": tracking_catch_shoot_fga_pct,
-            "tracking_pull_up_fga_pct": tracking_pull_up_fga_pct,
-            "tracking_avg_dribbles_before_shot": tracking_avg_dribbles_before_shot,
-            # Hustle features (LeagueHustleStatsPlayer) — -1 = not available
-            "hustle_deflections_pg": hustle_deflections_pg,
-            "hustle_contested_shots_pg": hustle_contested_shots_pg,
-            "hustle_charges_drawn_pg": hustle_charges_drawn_pg,
-            "hustle_screen_assists_pg": hustle_screen_assists_pg,
-            "hustle_loose_balls_pg": hustle_loose_balls_pg,
-            # Pass tracking features (PlayerDashPtPass) — -1 = not available
-            "tracking_potential_ast_pg": tracking_potential_ast_pg,
-            "tracking_passes_made_pg": tracking_passes_made_pg,
-            "tracking_ast_to_pass_pct": tracking_ast_to_pass_pct,
         }
         features.update(pos_flags)
         return features

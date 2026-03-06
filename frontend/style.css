@@ -207,48 +207,6 @@ main {
 
 .export-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ===== Log Panel ===== */
-.log-panel {
-  margin-bottom: 18px;
-  background: rgba(15, 52, 96, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 16px;
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.log-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--gold);
-}
-
-.log-content {
-  background: rgba(10, 10, 30, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 14px 16px;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: var(--text);
-  overflow-x: auto;
-  white-space: pre;
-  margin: 0;
-}
-
 /* ===== Tendency Categories ===== */
 .category-section {
   margin-bottom: 20px;
@@ -407,48 +365,4 @@ footer {
   .header-content h1 { font-size: 1.4rem; }
   .tendency-label { width: 150px; }
   .player-name { font-size: 1.1rem; }
-}
-
-/* ===== Tracking Status Indicator ===== */
-.tracking-status {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: rgba(15, 52, 96, 0.2);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.tracking-summary {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.tracking-summary.tracking-high { color: var(--bar-high); }
-.tracking-summary.tracking-med { color: var(--bar-med); }
-.tracking-summary.tracking-low { color: var(--bar-low); }
-
-.tracking-pills {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.tracking-pill {
-  font-size: 0.78rem;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.tracking-pill.active {
-  background: rgba(46, 204, 113, 0.15);
-  color: var(--bar-high);
-}
-
-.tracking-pill.inactive {
-  background: rgba(231, 76, 60, 0.15);
-  color: var(--bar-low);
 }

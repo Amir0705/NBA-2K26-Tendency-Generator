@@ -39,7 +39,6 @@ const playerResult    = document.getElementById("playerResult");
 const playerNameEl    = document.getElementById("playerName");
 const playerMetaEl    = document.getElementById("playerMeta");
 const tendenciesContainer = document.getElementById("tendenciesContainer");
-const trackingStatusEl    = document.getElementById("trackingStatus");
 const spinner         = document.getElementById("spinner");
 const spinnerText     = document.getElementById("spinnerText");
 const errorBanner     = document.getElementById("errorBanner");
@@ -50,10 +49,6 @@ const copyJsonBtn     = document.getElementById("copyJsonBtn");
 const dlJsonBtn       = document.getElementById("dlJsonBtn");
 const dlCsvBtn        = document.getElementById("dlCsvBtn");
 const dlExcelBtn      = document.getElementById("dlExcelBtn");
-const showLogBtn      = document.getElementById("showLogBtn");
-const logPanel        = document.getElementById("logPanel");
-const logContent      = document.getElementById("logContent");
-const copyLogBtn      = document.getElementById("copyLogBtn");
 
 // ── Utilities ─────────────────────────────────────────────────────────────
 function showSpinner(text = "Loading…") {
@@ -79,30 +74,6 @@ function hideError() {
 
 function safeName(name) {
   return name.toLowerCase().replace(/\s+/g, "_");
-}
-
-// ── Tracking status indicator ─────────────────────────────────────────────
-function renderTrackingStatus(status) {
-  if (!status) return "";
-  const sources = [
-    { key: "play_types_available", label: "Play Types" },
-    { key: "tracking_shots_available", label: "Tracking Shots" },
-    { key: "hustle_available", label: "Hustle Stats" },
-    { key: "passing_available", label: "Passing Tracking" },
-  ];
-  const available = sources.filter(s => status[s.key]).length;
-  const total = sources.length;
-  const color = available === total ? "high" : available >= 2 ? "med" : "low";
-
-  const pills = sources.map(s =>
-    `<span class="tracking-pill ${status[s.key] ? "active" : "inactive"}">${status[s.key] ? "✅" : "❌"} ${s.label}</span>`
-  ).join("");
-
-  return `
-    <div class="tracking-status">
-      <span class="tracking-summary tracking-${color}">📊 Data Sources: ${available}/${total}</span>
-      <div class="tracking-pills">${pills}</div>
-    </div>`;
 }
 
 // ── Tendency bar rendering ─────────────────────────────────────────────────
@@ -162,11 +133,6 @@ async function generatePlayer(playerName) {
     // The API already has label per tendency; we need category — fetch registry lazily
     _currentPlayerData = data;
 
-    // Reset log panel for new generation
-    if (logPanel) logPanel.hidden = true;
-    if (showLogBtn) showLogBtn.textContent = "📊 Show Log";
-    if (trackingStatusEl) trackingStatusEl.innerHTML = "";
-
     playerNameEl.textContent = data.player_name;
     playerMetaEl.textContent = [data.position, data.team, data.season]
       .filter(Boolean).join(" · ");
@@ -181,9 +147,6 @@ async function generatePlayer(playerName) {
     }
 
     renderTendencies(enriched);
-    if (trackingStatusEl) {
-      trackingStatusEl.innerHTML = renderTrackingStatus(data.tracking_data_status);
-    }
     hideSpinner();
     teamResult.hidden = true;
     playerResult.hidden = false;
@@ -287,75 +250,6 @@ dlExcelBtn.addEventListener("click", () => {
   window.location.href = `/export/excel/${encodeURIComponent(_currentPlayerData.player_name)}?season=${season}`;
 });
 
-// ── Log panel ──────────────────────────────────────────────────────────────
-const LOG_LABEL_WIDTH = 26;
-
-function buildLogText(data) {
-  const status = data.tracking_data_status || {};
-  const name = data.player_name || "Unknown";
-  const season = data.season || "";
-  const position = data.position || "";
-  const team = data.team || "";
-
-  const sources = [
-    { label: "Play Types (Synergy)", key: "play_types_available" },
-    { label: "Tracking Shots",       key: "tracking_shots_available" },
-    { label: "Hustle Stats",         key: "hustle_available" },
-    { label: "Passing Tracking",     key: "passing_available" },
-  ];
-
-  const lines = [];
-  lines.push("═══════════════════════════════════════════");
-  lines.push(`  DATA SOURCE LOG — ${name}`);
-  lines.push(`  Season: ${season} | Position: ${position} | Team: ${team}`);
-  lines.push("═══════════════════════════════════════════");
-  lines.push("");
-
-  let available = 0;
-  for (const s of sources) {
-    const ok = status[s.key] === true;
-    if (ok) available++;
-    const icon = ok ? "✅" : "❌";
-    const statusText = ok ? "Available" : "Unavailable";
-    const paddedLabel = s.label.padEnd(LOG_LABEL_WIDTH);
-    lines.push(`  ${icon} ${paddedLabel} — ${statusText}`);
-  }
-
-  lines.push("");
-  lines.push("───────────────────────────────────────────");
-  lines.push(`  ${available} of ${sources.length} data sources available`);
-  if (available < sources.length) {
-    lines.push("  Note: Unavailable sources use proxy formulas");
-  }
-  lines.push("═══════════════════════════════════════════");
-
-  return lines.join("\n");
-}
-
-showLogBtn.addEventListener("click", () => {
-  if (logPanel.hidden) {
-    if (_currentPlayerData) {
-      logContent.textContent = buildLogText(_currentPlayerData);
-    }
-    logPanel.hidden = false;
-    showLogBtn.textContent = "📊 Hide Log";
-  } else {
-    logPanel.hidden = true;
-    showLogBtn.textContent = "📊 Show Log";
-  }
-});
-
-copyLogBtn.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(logContent.textContent);
-    copyLogBtn.textContent = "✅ Copied!";
-    setTimeout(() => { copyLogBtn.textContent = "📋 Copy Log"; }, 2000);
-  } catch {
-    copyLogBtn.textContent = "❌ Failed";
-    setTimeout(() => { copyLogBtn.textContent = "📋 Copy Log"; }, 2000);
-  }
-});
-
 // ── Search / Autocomplete ──────────────────────────────────────────────────
 playerSearch.addEventListener("input", () => {
   clearTimeout(_debounceTimer);
@@ -383,10 +277,7 @@ async function fetchSuggestions(query) {
     if (!resp.ok) return;
     const data = await resp.json();
     showSuggestions(data.results || []);
-  } catch {
-    // Show a brief non-blocking hint so user knows search is degraded
-    console.warn("Player search request failed");
-  }
+  } catch { /* ignore search errors */ }
 }
 
 function showSuggestions(results) {
