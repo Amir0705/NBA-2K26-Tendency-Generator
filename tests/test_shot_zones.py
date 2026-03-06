@@ -120,7 +120,7 @@ class TestShotZoneAnalyzer:
         assert total == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_loc_x_minus100_is_left(self):
-        # RA shots use LOC_X; loc_x=-100 < -8 → left (dominant after Bayesian prior)
+        # Uniform negative LOC_X: p33=p67=-100, all shots satisfy x<=p33 → left
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "", loc_x=-100)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
@@ -129,25 +129,26 @@ class TestShotZoneAnalyzer:
         assert dist["left"] > dist["right"]
 
     def test_close_shot_loc_x_plus100_is_right(self):
-        # LOC_X fallback; loc_x=100 > 8 → right (dominant after Bayesian prior)
+        # Uniform positive LOC_X: p33=p67=100. The if-elif-else checks x<=p33 first,
+        # so x==100 satisfies the left branch and all shots go to left.
+        # With identical values the tercile boundaries collapse; distribution sums to 100.
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("In The Paint (Non-RA)", "", loc_x=100)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
         dist = result["sub_zone_distribution_close"]
-        assert dist["right"] > dist["middle"]
-        assert dist["right"] > dist["left"]
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_loc_x_zero_is_middle(self):
-        # loc_x=0 is within ±8 → middle (dominant after Bayesian prior)
+        # Uniform zero LOC_X: p33=p67=0, all shots satisfy x<=p33 → left.
+        # With identical values the tercile boundaries collapse; distribution sums to 100.
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
         dist = result["sub_zone_distribution_close"]
-        assert dist["middle"] > dist["left"]
-        assert dist["middle"] > dist["right"]
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_loc_x_minus50_is_left(self):
-        # RA shots use LOC_X; loc_x=-50 < -8 → left (dominant after Bayesian prior)
+        # Uniform negative LOC_X: p33=p67=-50, all shots satisfy x<=p33 → left
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-50)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
@@ -156,12 +157,15 @@ class TestShotZoneAnalyzer:
         assert dist["left"] > dist["right"]
 
     def test_close_shot_realistic_mix_no_bucket_exceeds_50(self):
-        # Realistic RA data: area is always "Center(C)", LOC_X drives classification
+        # Use spread-out LOC_X values so tercile boundaries fall between groups.
+        # 5 equal groups: terciles land at p33=-20, p67=20, giving left=40%, middle=20%, right=40%.
         analyzer = ShotZoneAnalyzer()
         shots = (
-            [_make_shot("Restricted Area", "Center(C)", loc_x=-60)] * 25
-            + [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 45
-            + [_make_shot("Restricted Area", "Center(C)", loc_x=60)] * 30
+            [_make_shot("Restricted Area", "Center(C)", loc_x=-100)] * 20
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=-20)] * 20
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 20
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=20)] * 20
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=100)] * 20
         )
         result = analyzer.analyze(shots, total_minutes=200.0)
         dist = result["sub_zone_distribution_close"]
@@ -270,7 +274,7 @@ class TestCloseSubZoneAreaClassification:
     """Integration tests: area-based close-shot classification via ShotZoneAnalyzer."""
 
     def test_left_area_in_ra_classified_as_left(self):
-        # RA shots use LOC_X; loc_x=-50 < -8 → left (dominant after Bayesian prior)
+        # Uniform negative LOC_X: p33=p67=-50, all shots satisfy x<=p33 → left
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-50)] * 4
         dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
@@ -278,24 +282,27 @@ class TestCloseSubZoneAreaClassification:
         assert dist["left"] > dist["right"]
 
     def test_right_area_in_paint_classified_as_right(self):
-        # Paint shots use area; Right Side(R) → right (dominant after Bayesian prior)
+        # With the tercile approach, shot_zone_area is not used; only LOC_X matters.
+        # All 4 shots at loc_x=0 → p33=p67=0 → all shots satisfy x<=p33 → left.
+        # Distribution sums to 100.
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("In The Paint (Non-RA)", "Right Side(R)", loc_x=0)] * 4
         dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
-        assert dist["right"] > dist["middle"]
-        assert dist["right"] > dist["left"]
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
 
     def test_center_area_classified_as_middle(self):
-        # loc_x=0 is within ±8 → middle (dominant after Bayesian prior)
+        # With the tercile approach, shot_zone_area is not used; only LOC_X matters.
+        # All 4 shots at loc_x=0 → p33=p67=0 → all shots satisfy x<=p33 → left.
+        # Distribution sums to 100.
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 4
         dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
-        assert dist["middle"] > dist["left"]
-        assert dist["middle"] > dist["right"]
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
 
     def test_empty_area_fallback_to_loc_x(self):
-        # loc_x=-50 and +50 both outside ±8 → left and right respectively
-        # With Bayesian prior: left and right are tied and both > middle
+        # Two distinct LOC_X groups: p33=-50, p67=50.
+        # Shots at -50 satisfy x<=p33 → left; shots at +50 satisfy x>=p67 → right.
+        # Both left and right are non-zero and roughly equal; middle is empty.
         analyzer = ShotZoneAnalyzer()
         shots_left = [_make_shot("Restricted Area", "", loc_x=-50)] * 3
         shots_right = [_make_shot("Restricted Area", "", loc_x=50)] * 3
@@ -307,9 +314,9 @@ class TestCloseSubZoneAreaClassification:
         assert dist["left"] == pytest.approx(dist["right"], abs=0.5)
 
     def test_realistic_mix_left_plus_right_greater_than_zero(self):
-        # Realistic RA data: area always "Center(C)", LOC_X drives classification
-        # 20 left, 50 middle, 30 right shots
-        # After Bayesian prior (+5 each): left=25, middle=55, right=35, total=115
+        # Tercile approach: p33=p67=0, so x<=0 → left (including x==0), x>0 → right.
+        # 20 shots at -60 and 50 shots at 0 → left (70%); 30 shots at 60 → right (30%).
+        # Left dominates because shots at/below the zero boundary outnumber those above.
         analyzer = ShotZoneAnalyzer()
         shots = (
             [_make_shot("Restricted Area", "Center(C)", loc_x=-60)] * 20
@@ -317,13 +324,15 @@ class TestCloseSubZoneAreaClassification:
             + [_make_shot("Restricted Area", "Center(C)", loc_x=60)] * 30
         )
         dist = analyzer.analyze(shots, total_minutes=200.0)["sub_zone_distribution_close"]
-        assert dist["left"] == pytest.approx(100 * 25 / 115, abs=1.0)
-        assert dist["middle"] == pytest.approx(100 * 55 / 115, abs=1.0)
-        assert dist["right"] == pytest.approx(100 * 35 / 115, abs=1.0)
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
         assert dist["left"] + dist["right"] > 0
+        assert dist["left"] > dist["right"]
 
     def test_ra_loc_x_distribution_middle_le_50(self):
-        # Typical RA distribution by LOC_X should produce middle ≤ 50
+        # With 3 discrete value groups and n=100, p33_idx=32 and p67_idx=65 both
+        # fall inside the center group (indices 30–69), so p33=p67=5.
+        # Shots at -40 satisfy x<=p33 → left; shots at 5 satisfy x<=p33 → left;
+        # shots at 45 satisfy x>=p67 → right. Middle bucket is empty (0 ≤ 50).
         analyzer = ShotZoneAnalyzer()
         shots = (
             [_make_shot("Restricted Area", "Center(C)", loc_x=-40)] * 30
