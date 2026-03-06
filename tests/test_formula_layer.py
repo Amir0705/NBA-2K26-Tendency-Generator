@@ -187,6 +187,29 @@ class TestFormulaLayerGenerate:
         high_r = formula.generate(high_usg)
         assert low_r["no_driving_dribble_move"] > high_r["no_driving_dribble_move"]
 
+    def test_shot_close_middle_varies_with_close_distribution(self, formula):
+        # Player A: mostly-left close distribution
+        f_left = _minimal_features("C")
+        f_left["sub_zone_distribution_close"] = {"left": 45.0, "middle": 30.0, "right": 25.0}
+        # Player B: mostly-right close distribution
+        f_right = _minimal_features("C")
+        f_right["sub_zone_distribution_close"] = {"left": 25.0, "middle": 30.0, "right": 45.0}
+        # Player C: mostly-middle close distribution
+        f_mid = _minimal_features("C")
+        f_mid["sub_zone_distribution_close"] = {"left": 20.0, "middle": 45.0, "right": 35.0}
+
+        r_left = formula.generate(f_left)
+        r_right = formula.generate(f_right)
+        r_mid = formula.generate(f_mid)
+
+        # shot_close_middle should reflect the input distribution, not be a constant
+        assert r_mid["shot_close_middle"] > r_left["shot_close_middle"]
+        assert r_mid["shot_close_middle"] > r_right["shot_close_middle"]
+        # All values must stay under the hard cap of 50
+        assert r_left["shot_close_middle"] <= 50
+        assert r_right["shot_close_middle"] <= 50
+        assert r_mid["shot_close_middle"] <= 50
+
 
 class TestFormulaLayerCompute:
     def test_compute_returns_integers(self):

@@ -92,9 +92,9 @@ class ShotZoneAnalyzer:
 
             # Sub-zone: close (ra + paint → left/middle/right by LOC_X)
             if basic in ("Restricted Area", "In The Paint (Non-RA)"):
-                if loc_x < -30:
+                if loc_x < -80:
                     close_counts["left"] += 1
-                elif loc_x > 30:
+                elif loc_x > 80:
                     close_counts["right"] += 1
                 else:
                     close_counts["middle"] += 1

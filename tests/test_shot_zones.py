@@ -118,6 +118,52 @@ class TestShotZoneAnalyzer:
         total = sum(dist.values())
         assert total == pytest.approx(100.0, abs=0.5)
 
+    def test_close_shot_loc_x_minus100_is_left(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-100)] * 4
+        result = analyzer.analyze(shots, total_minutes=100.0)
+        dist = result["sub_zone_distribution_close"]
+        assert dist["left"] == pytest.approx(100.0, abs=0.5)
+        assert dist["middle"] == pytest.approx(0.0, abs=0.5)
+        assert dist["right"] == pytest.approx(0.0, abs=0.5)
+
+    def test_close_shot_loc_x_plus100_is_right(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("In The Paint (Non-RA)", "Center(C)", loc_x=100)] * 4
+        result = analyzer.analyze(shots, total_minutes=100.0)
+        dist = result["sub_zone_distribution_close"]
+        assert dist["right"] == pytest.approx(100.0, abs=0.5)
+        assert dist["middle"] == pytest.approx(0.0, abs=0.5)
+        assert dist["left"] == pytest.approx(0.0, abs=0.5)
+
+    def test_close_shot_loc_x_zero_is_middle(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 4
+        result = analyzer.analyze(shots, total_minutes=100.0)
+        dist = result["sub_zone_distribution_close"]
+        assert dist["middle"] == pytest.approx(100.0, abs=0.5)
+
+    def test_close_shot_loc_x_minus50_is_middle(self):
+        # loc_x=-50 is between -80 and 80, so it should still be "middle"
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-50)] * 4
+        result = analyzer.analyze(shots, total_minutes=100.0)
+        dist = result["sub_zone_distribution_close"]
+        assert dist["middle"] == pytest.approx(100.0, abs=0.5)
+
+    def test_close_shot_realistic_mix_no_bucket_exceeds_50(self):
+        # Simulate a realistic distribution: some left, some middle, some right
+        analyzer = ShotZoneAnalyzer()
+        shots = (
+            [_make_shot("Restricted Area", "Center(C)", loc_x=-100)] * 25
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 45
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=100)] * 30
+        )
+        result = analyzer.analyze(shots, total_minutes=200.0)
+        dist = result["sub_zone_distribution_close"]
+        for bucket, value in dist.items():
+            assert value <= 50.0, f"Bucket '{bucket}' exceeded 50: {value}"
+
     def test_sub_zone_mid_sums_to_100(self):
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Mid-Range", "Left Side(L)")] * 2
