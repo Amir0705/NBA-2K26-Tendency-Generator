@@ -68,6 +68,168 @@ def _round_family_to_parent(
         rounded[key] = unit * 5
 
 
+def _round_family_preserve_shape(
+    raw_values: dict[str, float],
+    rounded: dict[str, int],
+    family_keys: list[str],
+) -> None:
+    """Round a family to 5-step values while preserving raw shape and family total."""
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+
+    if total_raw <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
+
+    target_units = max(0, round(total_raw / 5))
+    if target_units <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
+
+    ideal_units = [val / total_raw * target_units for val in family_raw]
+    units = [int(u) for u in ideal_units]
+    remainder = target_units - sum(units)
+    fractions = sorted(
+        [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+        reverse=True,
+    )
+    for idx in range(remainder):
+        units[fractions[idx][1]] += 1
+
+    for key, unit in zip(family_keys, units):
+        rounded[key] = unit * 5
+
+
+def _round_mid_family(
+    raw_values: dict[str, float],
+    rounded: dict[str, int],
+    parent_key: str,
+    family_keys: list[str],
+) -> None:
+    """Round mid sub-zones with stronger shaping and anti-zero lane floors."""
+    parent_rounded = rounded.get(parent_key)
+    if parent_rounded is None:
+        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
+        rounded[parent_key] = parent_rounded
+
+    parent_rounded = max(0, min(100, parent_rounded))
+    target_units = parent_rounded // 5
+    if target_units <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
+
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+    if total_raw <= 0:
+        base = target_units // len(family_keys)
+        remainder = target_units % len(family_keys)
+        units = [base + (1 if i < remainder else 0) for i in range(len(family_keys))]
+    else:
+        gamma = 1.35
+        shares = [value / total_raw for value in family_raw]
+        shaped = [max(1e-6, share) ** gamma for share in shares]
+        shaped_total = sum(shaped)
+        ideal_units = [value / shaped_total * target_units for value in shaped]
+        units = [int(u) for u in ideal_units]
+        remainder = target_units - sum(units)
+        fractions = sorted(
+            [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+            reverse=True,
+        )
+        for idx in range(remainder):
+            units[fractions[idx][1]] += 1
+
+    def _steal_one_unit(exclude_idx: int) -> bool:
+        donors = sorted(
+            [i for i in range(len(units)) if i != exclude_idx and units[i] > 1],
+            key=lambda i: units[i],
+            reverse=True,
+        )
+        if not donors:
+            return False
+        units[donors[0]] -= 1
+        return True
+
+    if target_units >= 6:
+        for lane_idx in (1, 3):
+            if units[lane_idx] == 0 and family_raw[lane_idx] > 0.0 and _steal_one_unit(lane_idx):
+                units[lane_idx] = 1
+
+    if target_units >= 7 and total_raw > 0:
+        top_idx = max(range(len(family_raw)), key=lambda i: family_raw[i])
+        while units[top_idx] < 2:
+            if not _steal_one_unit(top_idx):
+                break
+            units[top_idx] += 1
+
+    for key, unit in zip(family_keys, units):
+        rounded[key] = unit * 5
+
+
+def _round_three_family(
+    raw_values: dict[str, float],
+    rounded: dict[str, int],
+    parent_key: str,
+    family_keys: list[str],
+) -> None:
+    """Round three sub-zones with shaping and wing soft-floor logic."""
+    parent_rounded = rounded.get(parent_key)
+    if parent_rounded is None:
+        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
+        rounded[parent_key] = parent_rounded
+
+    parent_rounded = max(0, min(100, parent_rounded))
+    target_units = parent_rounded // 5
+    if target_units <= 0:
+        for key in family_keys:
+            rounded[key] = 0
+        return
+
+    family_raw = [max(0.0, float(raw_values.get(key, 0.0))) for key in family_keys]
+    total_raw = sum(family_raw)
+    if total_raw <= 0:
+        base = target_units // len(family_keys)
+        remainder = target_units % len(family_keys)
+        units = [base + (1 if i < remainder else 0) for i in range(len(family_keys))]
+    else:
+        gamma = 1.20
+        shares = [value / total_raw for value in family_raw]
+        shaped = [max(1e-6, share) ** gamma for share in shares]
+        shaped_total = sum(shaped)
+        ideal_units = [value / shaped_total * target_units for value in shaped]
+        units = [int(u) for u in ideal_units]
+        remainder = target_units - sum(units)
+        fractions = sorted(
+            [(ideal_units[i] - units[i], i) for i in range(len(family_keys))],
+            reverse=True,
+        )
+        for idx in range(remainder):
+            units[fractions[idx][1]] += 1
+
+    def _steal_from_core() -> bool:
+        donors = sorted(
+            [i for i in (1, 2, 3) if units[i] > 1],
+            key=lambda i: units[i],
+            reverse=True,
+        )
+        if not donors:
+            return False
+        units[donors[0]] -= 1
+        return True
+
+    # Soft floor: when shot_three is high, keep some wing presence.
+    if target_units >= 8:
+        for wing_idx in (0, 4):
+            if units[wing_idx] == 0 and family_raw[wing_idx] > 0.0 and _steal_from_core():
+                units[wing_idx] = 1
+
+    for key, unit in zip(family_keys, units):
+        rounded[key] = unit * 5
+
+
 def _apply_close_side_tiebreak(rounded: dict[str, int], drive_right_bias: float) -> None:
     """Break exact close left/right ties using drive-side bias while preserving sums."""
     left_key = "shot_close_left"
@@ -204,11 +366,7 @@ class TendencyPipeline:
                 "shot_close",
                 ["shot_close_left", "shot_close_middle", "shot_close_right"],
             )
-            _apply_close_side_tiebreak(
-                rounded,
-                float(guardrail_input.get("drive_right", guardrail_input.get("drive_right_bias", 50.0))),
-            )
-            _round_family_to_parent(
+            _round_mid_family(
                 guardrail_input,
                 rounded,
                 "shot_mid_range",
@@ -220,7 +378,7 @@ class TendencyPipeline:
                     "shot_mid_right",
                 ],
             )
-            _round_family_to_parent(
+            _round_three_family(
                 guardrail_input,
                 rounded,
                 "shot_three",
@@ -232,6 +390,10 @@ class TendencyPipeline:
                     "shot_three_right",
                 ],
             )
+            _apply_close_side_tiebreak(
+                rounded,
+                float(guardrail_input.get("drive_right", guardrail_input.get("drive_right_bias", 50.0))),
+            )
         except Exception as exc:  # noqa: BLE001
             violations = []
             errors.append(f"Guardrail error: {exc}")
@@ -242,16 +404,6 @@ class TendencyPipeline:
             (
                 "shot_close_left", "shot_close_middle", "shot_close_right",
                 "shot_close",
-            ),
-            (
-                "shot_mid_left", "shot_mid_left_center", "shot_mid_center",
-                "shot_mid_right_center", "shot_mid_right",
-                "shot_mid_range",
-            ),
-            (
-                "shot_three_left", "shot_three_left_center", "shot_three_center",
-                "shot_three_right_center", "shot_three_right",
-                "shot_three",
             ),
         ]
         for _family in _sub_zone_families:

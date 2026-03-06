@@ -72,30 +72,19 @@ class Guardrails:
                 if tendencies.get(hook, 0) > 0:
                     _fix(hook, 0.0, "post_up < 10 → post hooks = 0", "= 0")
 
-        # 5. Stepback Three <= Stepback Mid + 5
-        sb_three = tendencies.get("stepback_jumper_three", 0)
-        sb_mid = tendencies.get("stepback_jumper_mid_range", 0)
-        if sb_three > sb_mid + 5:
-            _fix(
-                "stepback_jumper_three",
-                sb_mid + 5,
-                "stepback_jumper_three <= stepback_jumper_mid_range + 5",
-                f"<= {sb_mid + 5:.1f}",
-            )
-
-        # 6a. No Setup Dribble absolute cap 35
+        # 5a. No Setup Dribble absolute cap 35
         no_setup = tendencies.get("no_setup_dribble", 0)
         if no_setup > 35:
             _fix("no_setup_dribble", 35.0, "no_setup_dribble absolute cap 35", "<= 35")
 
-        # 6b. Roll vs Pop: avoid 0/100 extremes (5–95)
+        # 5b. Roll vs Pop: avoid 0/100 extremes (5–95)
         roll_pop = tendencies.get("roll_vs_pop", 50)
         if roll_pop < 5:
             _fix("roll_vs_pop", 5.0, "roll_vs_pop avoid extreme low", ">= 5")
         elif roll_pop > 95:
             _fix("roll_vs_pop", 95.0, "roll_vs_pop avoid extreme high", "<= 95")
 
-        # 6c. Spot-Up Three should not exceed Shot Three + 10
+        # 5c. Spot-Up Three should not exceed Shot Three + 10
         spot_up_three = tendencies.get("spot_up_shot_three", 0)
         shot_three = tendencies.get("shot_three", 0)
         if spot_up_three > shot_three + 10:
@@ -106,7 +95,7 @@ class Guardrails:
                 f"<= {shot_three + 10}",
             )
 
-        # 6d. Off-Screen Three <= Shot Three
+        # 5d. Off-Screen Three <= Shot Three
         off_screen_three = tendencies.get("off_screen_shot_three", 0)
         if off_screen_three > shot_three:
             _fix(
@@ -116,7 +105,7 @@ class Guardrails:
                 f"<= {shot_three}",
             )
 
-        # 6e. Contested Jumper Three <= Shot Three
+        # 5e. Contested Jumper Three <= Shot Three
         contested_three = tendencies.get("contested_jumper_three", 0)
         if contested_three > shot_three:
             _fix(
@@ -126,7 +115,7 @@ class Guardrails:
                 f"<= {shot_three}",
             )
 
-        # 6f. Idle ↔ discipline guardrail:
+        # 5f. Idle ↔ discipline guardrail:
         # triple_threat_idle + triple_threat_pump_fake should not both be very high —
         # idling while also being pump-fake disciplined is contradictory
         triple_idle = tendencies.get("triple_threat_idle", 0)

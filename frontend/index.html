@@ -28,6 +28,7 @@
           />
           <ul id="suggestions" class="suggestions" hidden></ul>
         </div>
+        <button id="generatePlayerBtn" class="btn btn-primary">Generate Player</button>
         <div class="season-wrap">
           <label for="seasonSelect">Season</label>
           <select id="seasonSelect" class="input select">
@@ -37,6 +38,8 @@
           </select>
         </div>
       </div>
+
+      <div id="recentPlayers" class="recent-players" hidden></div>
 
       <div class="divider">OR</div>
 
@@ -87,15 +90,28 @@
         <div class="player-info">
           <span id="playerName" class="player-name"></span>
           <span id="playerMeta" class="player-meta"></span>
+          <span id="guardrailBadge" class="meta-badge" hidden></span>
+          <span id="errorBadge" class="meta-badge error" hidden></span>
         </div>
         <div class="export-btns">
           <button class="btn btn-sm" id="copyJsonBtn">📋 Copy JSON</button>
           <button class="btn btn-sm" id="dlJsonBtn">📥 JSON</button>
           <button class="btn btn-sm" id="dlCsvBtn">📥 CSV</button>
           <button class="btn btn-sm" id="dlExcelBtn">📥 Excel</button>
+          <button class="btn btn-sm" id="toggleDebugBtn">🛠 Debug</button>
         </div>
       </div>
+      <div class="compare-controls compare-inline">
+        <div class="search-wrap compare-wrap">
+          <input type="text" id="comparePlayerSearch" class="input" placeholder="Compare with player…" autocomplete="off" />
+          <ul id="compareSuggestions" class="suggestions" hidden></ul>
+        </div>
+        <button id="compareBtn" class="btn">Compare</button>
+      </div>
+      <h3 id="compareTitle" class="team-title" hidden></h3>
+      <div id="compareTable" hidden></div>
       <div id="tendenciesContainer"></div>
+      <pre id="debugPanel" class="debug-panel" hidden></pre>
     </section>
 
     <!-- Loading spinner -->

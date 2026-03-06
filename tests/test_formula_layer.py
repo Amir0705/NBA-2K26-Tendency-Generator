@@ -280,11 +280,11 @@ class TestFormulaLayerCompute:
         for k, v in result.items():
             assert v % 5 == 0, f"{k} = {v} is not a multiple of 5"
 
-    def test_apply_locked_rules_stepback(self):
+    def test_apply_locked_rules_stepback_not_hard_clamped(self):
         formula = FormulaLayer()
         t = {"stepback_jumper_three": 40, "stepback_jumper_mid_range": 20}
         result = formula.apply_locked_rules(t)
-        assert result["stepback_jumper_three"] <= result["stepback_jumper_mid_range"] + 5
+        assert result["stepback_jumper_three"] == 40
 
     def test_shot_does_not_exceed_75(self):
         formula = FormulaLayer()

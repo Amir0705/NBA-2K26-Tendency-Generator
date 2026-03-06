@@ -80,6 +80,11 @@ main {
   flex-wrap: wrap;
 }
 
+#generatePlayerBtn {
+  align-self: stretch;
+  min-height: 44px;
+}
+
 .search-wrap { position: relative; flex: 1 1 260px; }
 
 .season-wrap {
@@ -155,6 +160,13 @@ main {
 }
 .btn:active { transform: translateY(0); }
 
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--accent) 0%, #c73652 100%);
   font-weight: 600;
@@ -192,6 +204,28 @@ main {
 .suggestions li:hover, .suggestions li.active { background: var(--blue); }
 .suggestions li .sug-team { color: var(--muted); font-size: 0.8rem; margin-left: 6px; }
 
+/* ===== Recent Players ===== */
+.recent-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.recent-chip {
+  background: rgba(15, 52, 96, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.recent-chip:hover {
+  background: rgba(233, 69, 96, 0.25);
+}
+
 /* ===== Player Result ===== */
 .player-header {
   display: flex;
@@ -206,6 +240,76 @@ main {
 .player-meta { font-size: 0.9rem; color: var(--muted); margin-left: 10px; }
 
 .export-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.meta-badge {
+  display: inline-block;
+  margin-left: 8px;
+  margin-top: 6px;
+  background: rgba(46, 204, 113, 0.18);
+  border: 1px solid rgba(46, 204, 113, 0.4);
+  border-radius: 999px;
+  color: #c3ffd7;
+  font-size: 0.75rem;
+  padding: 4px 9px;
+}
+
+.meta-badge.error {
+  background: rgba(231, 76, 60, 0.18);
+  border-color: rgba(231, 76, 60, 0.45);
+  color: #ffd5ce;
+}
+
+.debug-panel {
+  margin-top: 14px;
+  background: rgba(5, 8, 20, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: #d7def1;
+}
+
+.compare-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.compare-inline {
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.compare-wrap {
+  flex: 1 1 320px;
+}
+
+.compare-controls .input {
+  flex: 1 1 260px;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 2fr) 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.82rem;
+}
+
+.compare-row.header {
+  font-weight: 700;
+  color: var(--gold);
+  border-bottom-color: rgba(255, 215, 0, 0.25);
+}
+
+.compare-delta.pos { color: #2ecc71; font-weight: 700; }
+.compare-delta.neg { color: #e74c3c; font-weight: 700; }
 
 /* ===== Tendency Categories ===== */
 .category-section {

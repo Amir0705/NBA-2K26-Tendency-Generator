@@ -59,12 +59,13 @@ class TestGuardrailsCheck:
         assert t["post_hook_left"] <= 5
         assert t["post_hook_right"] <= 5
 
-    def test_stepback_three_corrected(self, guardrails):
+    def test_stepback_three_not_hard_corrected(self, guardrails):
         t = _base_tendencies()
         t["stepback_jumper_three"] = 40
         t["stepback_jumper_mid_range"] = 10
         violations = guardrails.check(t)
-        assert t["stepback_jumper_three"] <= t["stepback_jumper_mid_range"] + 5
+        assert not any(v["tendency"] == "stepback_jumper_three" for v in violations)
+        assert t["stepback_jumper_three"] == 40
 
     def test_sub_zone_normalization(self, guardrails):
         t = _base_tendencies()
@@ -243,7 +244,7 @@ class TestIdlePlayDisciplineGuardrail:
 
 
 class TestSubZoneParentAwareNormalization:
-    """Tests that sub-zone families normalize to parent value, not 100."""
+    """Tests close sub-zone family normalization (mid/three remain chart-driven)."""
 
     @pytest.fixture(scope="class")
     def guardrails(self):
@@ -265,7 +266,7 @@ class TestSubZoneParentAwareNormalization:
         assert any("shot_close" in v["rule"] for v in violations)
 
     def test_mid_sub_zones_normalize_to_parent(self, guardrails):
-        """Mid sub-zones that don't sum to parent are corrected to parent."""
+        """Mid sub-zones are parent-normalized by guardrails when far off."""
         t = _base_tendencies()
         t["shot_mid_range"] = 25
         # Sub-zones sum to 100 (5 × 20), parent is 25 — outside tolerance
@@ -278,10 +279,10 @@ class TestSubZoneParentAwareNormalization:
         assert abs(total - 25) <= max(5.0, 25 * 0.1), (
             f"Expected sum ≈25 after normalization, got {total}"
         )
-        assert any("shot_mid" in v["rule"] for v in violations)
+        assert any("shot_mid" in v.get("rule", "") for v in violations)
 
     def test_three_sub_zones_normalize_to_parent(self, guardrails):
-        """Three sub-zones that don't sum to parent are corrected to parent."""
+        """Three sub-zones are parent-normalized by guardrails when far off."""
         t = _base_tendencies()
         t["shot_three"] = 20
         # Sub-zones sum to 100 (5 × 20), parent is 20 — outside tolerance
@@ -295,7 +296,7 @@ class TestSubZoneParentAwareNormalization:
         assert abs(total - 20) <= max(5.0, 20 * 0.1), (
             f"Expected sum ≈20 after normalization, got {total}"
         )
-        assert any("shot_three" in v["rule"] for v in violations)
+        assert any("shot_three" in v.get("rule", "") for v in violations)
 
     def test_close_sub_zones_already_summing_to_parent_no_violation(self, guardrails):
         """No violation when close sub-zones already sum to parent."""

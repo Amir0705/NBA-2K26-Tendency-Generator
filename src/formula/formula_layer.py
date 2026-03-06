@@ -76,6 +76,26 @@ def _shape_close_distribution(
     }
 
 
+def _shape_five_zone_distribution(
+    dist: dict[str, float],
+    gamma: float = 1.25,
+) -> dict[str, float]:
+    """Return a normalized 5-zone percentage split after gamma shaping."""
+    keys = ["left", "left_center", "center", "right_center", "right"]
+    raw = [max(0.0, float(dist.get(k, 20.0))) for k in keys]
+    total = sum(raw)
+    if total <= 0:
+        return {k: 20.0 for k in keys}
+
+    shares = [v / total for v in raw]
+    shaped = [max(1e-6, s) ** gamma for s in shares]
+    shaped_total = sum(shaped)
+    if shaped_total <= 0:
+        return {k: 20.0 for k in keys}
+
+    return {k: shaped[i] / shaped_total * 100.0 for i, k in enumerate(keys)}
+
+
 class FormulaLayer:
     """Deterministic rule-based tendency calculator."""
 
@@ -165,7 +185,7 @@ class FormulaLayer:
         close_mix = 0.85 * zpaint + 0.15 * zra
         t["shot_close"] = scale(close_mix, [0.0, 0.3], [0, 60])
 
-        shot_mid_range = scale(zmid_total, [0.0, 0.35], [0, 55])
+        shot_mid_range = scale(zmid_total, [0.0, 0.32], [0, 60])
         t["shot_mid_range"] = shot_mid_range
 
         t["spot_up_shot_mid_range"] = shot_mid_range * 0.7
@@ -193,10 +213,27 @@ class FormulaLayer:
         t["contested_jumper_mid_range"] = shot_mid_range * 0.55 * _eff_mid
         t["contested_jumper_three"] = shot_three * 0.35 * _eff_three
         t["stepback_jumper_mid_range"] = scale(shot_mid_range, [0, 55], [0, 25]) * dribble_boost * _eff_mid
-        t["stepback_jumper_three"] = (
+        _creator_stepback_three = (
+            0.40 * scale(usg, [0.18, 0.35], [0.0, 1.0])
+            + 0.35 * scale(ast_to_tov, [1.2, 3.2], [0.0, 1.0])
+            + 0.25 * scale(fg3a_rate, [0.20, 0.60], [0.0, 1.0])
+        )
+        _creator_stepback_three = max(0.0, min(1.0, _creator_stepback_three))
+
+        _stepback_three_base = (
             scale(shot_three, [0, 60], [0, 30]) * dribble_boost
             + scale(fg3a_rate, [0.3, 0.6], [0, 10])
         ) * _eff_three
+        _stepback_three_pre_cap = _stepback_three_base * (1.0 + 0.45 * _creator_stepback_three)
+        _stepback_three_cap = (
+            t["stepback_jumper_mid_range"]
+            + (5.0 + round(8.0 * _creator_stepback_three))
+            + scale(shot_three, [20.0, 60.0], [0.0, 20.0])
+        )
+        t["stepback_jumper_three"] = max(
+            _stepback_three_base,
+            min(_stepback_three_pre_cap, _stepback_three_cap),
+        )
         t["spin_jumper"] = scale(shot_mid_range, [0, 55], [0, 15]) * dribble_boost
 
         # ---------------------------------------------------------------
@@ -222,10 +259,19 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category F: Craft Finishing
         # ---------------------------------------------------------------
-        t["spin_layup"] = scale(zra, [0.05, 0.3], [0, 25]) * dribble_boost
-        t["hop_step_layup"] = scale(zra, [0.05, 0.3], [0, 20]) * dribble_boost
-        t["euro_step_layup"] = scale(zra, [0.05, 0.3], [0, 25]) * dribble_boost
-        t["floater"] = scale(zpaint, [0.0, 0.2], [0, 25]) * dribble_boost
+        _creator_finish = (
+            0.50 * scale(usg, [0.18, 0.35], [0.0, 1.0])
+            + 0.35 * scale(ast_to_tov, [1.2, 3.2], [0.0, 1.0])
+            + 0.15 * scale(ast_p36, [3.0, 10.0], [0.0, 1.0])
+        )
+        _creator_finish = max(0.0, min(1.0, _creator_finish))
+        _layup_craft_bonus = 1.0 + 0.55 * _creator_finish
+        _floater_bonus = 1.0 + 0.30 * _creator_finish
+
+        t["spin_layup"] = scale(zra, [0.05, 0.3], [0, 25]) * dribble_boost * _layup_craft_bonus
+        t["hop_step_layup"] = scale(zra, [0.05, 0.3], [0, 20]) * dribble_boost * _layup_craft_bonus
+        t["euro_step_layup"] = scale(zra, [0.05, 0.3], [0, 25]) * dribble_boost * _layup_craft_bonus
+        t["floater"] = scale(zpaint, [0.0, 0.2], [0, 25]) * dribble_boost * _floater_bonus
 
         # ---------------------------------------------------------------
         # Category G: Physical
@@ -375,6 +421,38 @@ class FormulaLayer:
         t["post_drop_step"] = post_score * 0.40
         t["post_hop_step"] = post_score * 0.30
 
+        # Post playmaker layer (Jokic/Luka archetype): boosts finesse/playmaking
+        # post actions only when a player has both post context and true
+        # playmaking signal.
+        _playmaking_post = (
+            0.80 * scale(ast_p36, [4.0, 10.0], [0.0, 1.0])
+            + 0.20 * scale(ast_to_tov, [1.2, 3.5], [0.0, 1.0])
+        )
+        _post_context = (
+            0.45 * scale(t["post_up"], [6.0, 28.0], [0.0, 1.0])
+            + 0.25 * scale(t["shoot_from_post"], [5.0, 22.0], [0.0, 1.0])
+            + 0.30 * scale(shot_mid_range, [10.0, 40.0], [0.0, 1.0])
+        )
+        _size_postmaker = scale(height_inches + 0.05 * weight_lbs, [82.0, 96.0], [0.70, 1.0])
+        _post_playmaker_score = max(
+            0.0,
+            min(1.0, _playmaking_post * _post_context * _size_postmaker),
+        )
+
+        t["post_face_up"] *= (1.0 + 0.95 * _post_playmaker_score)
+        t["post_drive"] *= (1.0 + 0.80 * _post_playmaker_score)
+        t["post_spin"] *= (1.0 + 1.10 * _post_playmaker_score)
+        t["post_up_and_under"] *= (1.0 + 0.70 * _post_playmaker_score)
+        t["shoot_from_post"] *= (1.0 + 0.60 * _post_playmaker_score)
+
+        # Soft creator allowance: prevent all-zero hooks/fades for valid
+        # post playmakers while keeping rim-runners unchanged.
+        if t["post_up"] >= 10.0 and _post_playmaker_score >= 0.25:
+            t["post_hook_left"] += 2.5
+            t["post_hook_right"] += 2.5
+            t["post_fade_left"] += 2.0
+            t["post_fade_right"] += 2.0
+
         # ---------------------------------------------------------------
         # Category O: Playstyle Sliders
         # ---------------------------------------------------------------
@@ -454,12 +532,13 @@ class FormulaLayer:
         t["shot_close_right"] = dist_close_shaped["right"] * _close_parent / 100
 
         # Mid sub-zones: scale by shot_mid_range parent
+        dist_mid_shaped = _shape_five_zone_distribution(dist_mid, gamma=1.25)
         _mid_parent = t["shot_mid_range"]
-        t["shot_mid_left"] = dist_mid.get("left", 20.0) * _mid_parent / 100
-        t["shot_mid_left_center"] = dist_mid.get("left_center", 20.0) * _mid_parent / 100
-        t["shot_mid_center"] = dist_mid.get("center", 20.0) * _mid_parent / 100
-        t["shot_mid_right_center"] = dist_mid.get("right_center", 20.0) * _mid_parent / 100
-        t["shot_mid_right"] = dist_mid.get("right", 20.0) * _mid_parent / 100
+        t["shot_mid_left"] = dist_mid_shaped.get("left", 20.0) * _mid_parent / 100
+        t["shot_mid_left_center"] = dist_mid_shaped.get("left_center", 20.0) * _mid_parent / 100
+        t["shot_mid_center"] = dist_mid_shaped.get("center", 20.0) * _mid_parent / 100
+        t["shot_mid_right_center"] = dist_mid_shaped.get("right_center", 20.0) * _mid_parent / 100
+        t["shot_mid_right"] = dist_mid_shaped.get("right", 20.0) * _mid_parent / 100
 
         # Three sub-zones: scale by shot_three parent
         _three_parent = t["shot_three"]
@@ -505,12 +584,6 @@ class FormulaLayer:
         if "off_screen_shot_mid_range" in result and "shot_mid_range" in result:
             result["off_screen_shot_mid_range"] = min(
                 result["off_screen_shot_mid_range"], result["shot_mid_range"]
-            )
-        # Stepback three <= stepback mid + 5
-        if "stepback_jumper_three" in result and "stepback_jumper_mid_range" in result:
-            result["stepback_jumper_three"] = min(
-                result["stepback_jumper_three"],
-                result["stepback_jumper_mid_range"] + 5,
             )
         # Spot-Up Three <= Shot Three + 10
         if "spot_up_shot_three" in result and "shot_three" in result:

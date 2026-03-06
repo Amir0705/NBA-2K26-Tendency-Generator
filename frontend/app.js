@@ -28,16 +28,26 @@ const CATEGORY_ORDER = [
 // ── State ─────────────────────────────────────────────────────────────────
 let _currentPlayerData = null;  // last generated single-player API response
 let _debounceTimer = null;
+let _suggestionIndex = -1;
+let _latestSuggestions = [];
+const _recentKey = "recentPlayers";
+let _compareDebounceTimer = null;
+let _compareSuggestionIndex = -1;
+let _compareSuggestions = [];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
 const playerSearch    = document.getElementById("playerSearch");
+const generatePlayerBtn = document.getElementById("generatePlayerBtn");
 const suggestions     = document.getElementById("suggestions");
 const seasonSelect    = document.getElementById("seasonSelect");
 const teamSelect      = document.getElementById("teamSelect");
 const generateTeamBtn = document.getElementById("generateTeamBtn");
+const recentPlayersEl = document.getElementById("recentPlayers");
 const playerResult    = document.getElementById("playerResult");
 const playerNameEl    = document.getElementById("playerName");
 const playerMetaEl    = document.getElementById("playerMeta");
+const guardrailBadge  = document.getElementById("guardrailBadge");
+const errorBadge      = document.getElementById("errorBadge");
 const tendenciesContainer = document.getElementById("tendenciesContainer");
 const spinner         = document.getElementById("spinner");
 const spinnerText     = document.getElementById("spinnerText");
@@ -49,6 +59,13 @@ const copyJsonBtn     = document.getElementById("copyJsonBtn");
 const dlJsonBtn       = document.getElementById("dlJsonBtn");
 const dlCsvBtn        = document.getElementById("dlCsvBtn");
 const dlExcelBtn      = document.getElementById("dlExcelBtn");
+const toggleDebugBtn  = document.getElementById("toggleDebugBtn");
+const debugPanel      = document.getElementById("debugPanel");
+const comparePlayerSearch = document.getElementById("comparePlayerSearch");
+const compareSuggestions = document.getElementById("compareSuggestions");
+const compareBtn      = document.getElementById("compareBtn");
+const compareTitle    = document.getElementById("compareTitle");
+const compareTable    = document.getElementById("compareTable");
 
 // ── Utilities ─────────────────────────────────────────────────────────────
 function showSpinner(text = "Loading…") {
@@ -57,10 +74,22 @@ function showSpinner(text = "Loading…") {
   playerResult.hidden = true;
   teamResult.hidden = true;
   errorBanner.hidden = true;
+  setBusyState(true);
 }
 
 function hideSpinner() {
   spinner.hidden = true;
+  setBusyState(false);
+}
+
+function setBusyState(isBusy) {
+  playerSearch.disabled = isBusy;
+  comparePlayerSearch.disabled = isBusy;
+  generatePlayerBtn.disabled = isBusy;
+  compareBtn.disabled = isBusy;
+  seasonSelect.disabled = isBusy;
+  teamSelect.disabled = isBusy;
+  generateTeamBtn.disabled = isBusy;
 }
 
 function showError(msg) {
@@ -74,6 +103,28 @@ function hideError() {
 
 function safeName(name) {
   return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+function setMetaBadges(data) {
+  const debug = data.debug || {};
+  const guardrails = Number(debug.guardrail_count || 0);
+  const errors = Number(debug.error_count || 0);
+
+  if (guardrails > 0) {
+    guardrailBadge.textContent = `Guardrails: ${guardrails}`;
+    guardrailBadge.hidden = false;
+  } else {
+    guardrailBadge.hidden = true;
+  }
+
+  if (errors > 0) {
+    errorBadge.textContent = `Errors: ${errors}`;
+    errorBadge.hidden = false;
+  } else {
+    errorBadge.hidden = true;
+  }
+
+  debugPanel.textContent = JSON.stringify(debug, null, 2);
 }
 
 // ── Tendency bar rendering ─────────────────────────────────────────────────
@@ -119,10 +170,15 @@ function renderTendencies(tendenciesObj) {
 
 // ── Player generation ──────────────────────────────────────────────────────
 async function generatePlayer(playerName) {
+  if (!playerName || !playerName.trim()) {
+    showError("Please enter a player name.");
+    return;
+  }
+  const cleanedPlayerName = playerName.trim();
   const season = seasonSelect.value;
-  showSpinner(`Generating tendencies for ${playerName}…`);
+  showSpinner(`Generating tendencies for ${cleanedPlayerName}…`);
   try {
-    const resp = await fetch(`/generate/${encodeURIComponent(playerName)}?season=${season}`);
+    const resp = await fetch(`/generate/${encodeURIComponent(cleanedPlayerName)}?season=${season}`);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(err.detail || `HTTP ${resp.status}`);
@@ -147,9 +203,14 @@ async function generatePlayer(playerName) {
     }
 
     renderTendencies(enriched);
+    setMetaBadges(data);
+    addRecentPlayer(data.player_name || cleanedPlayerName);
     hideSpinner();
     teamResult.hidden = true;
     playerResult.hidden = false;
+    compareTitle.hidden = true;
+    compareTable.hidden = true;
+    compareTable.innerHTML = "";
     hideError();
   } catch (e) {
     hideSpinner();
@@ -250,6 +311,11 @@ dlExcelBtn.addEventListener("click", () => {
   window.location.href = `/export/excel/${encodeURIComponent(_currentPlayerData.player_name)}?season=${season}`;
 });
 
+toggleDebugBtn.addEventListener("click", () => {
+  debugPanel.hidden = !debugPanel.hidden;
+  toggleDebugBtn.textContent = debugPanel.hidden ? "🛠 Debug" : "🙈 Hide Debug";
+});
+
 // ── Search / Autocomplete ──────────────────────────────────────────────────
 playerSearch.addEventListener("input", () => {
   clearTimeout(_debounceTimer);
@@ -259,15 +325,51 @@ playerSearch.addEventListener("input", () => {
 });
 
 playerSearch.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" && _latestSuggestions.length > 0) {
+    e.preventDefault();
+    _suggestionIndex = Math.min(_suggestionIndex + 1, _latestSuggestions.length - 1);
+    updateSuggestionActiveState();
+    return;
+  }
+  if (e.key === "ArrowUp" && _latestSuggestions.length > 0) {
+    e.preventDefault();
+    _suggestionIndex = Math.max(_suggestionIndex - 1, 0);
+    updateSuggestionActiveState();
+    return;
+  }
   if (e.key === "Enter") {
+    e.preventDefault();
+    if (_suggestionIndex >= 0 && _latestSuggestions[_suggestionIndex]) {
+      const selected = _latestSuggestions[_suggestionIndex].full_name;
+      playerSearch.value = selected;
+      hideSuggestions();
+      generatePlayer(selected);
+      return;
+    }
     const q = playerSearch.value.trim();
     if (q) { hideSuggestions(); generatePlayer(q); }
+  }
+  if (e.key === "Escape") {
+    hideSuggestions();
+  }
+});
+
+generatePlayerBtn.addEventListener("click", () => {
+  const q = playerSearch.value.trim();
+  if (q) {
+    hideSuggestions();
+    generatePlayer(q);
+  } else {
+    showError("Please enter a player name.");
   }
 });
 
 document.addEventListener("click", e => {
   if (!playerSearch.contains(e.target) && !suggestions.contains(e.target)) {
     hideSuggestions();
+  }
+  if (!comparePlayerSearch.contains(e.target) && !compareSuggestions.contains(e.target)) {
+    hideCompareSuggestions();
   }
 });
 
@@ -282,7 +384,9 @@ async function fetchSuggestions(query) {
 
 function showSuggestions(results) {
   if (!results.length) { hideSuggestions(); return; }
-  suggestions.innerHTML = results.slice(0, 8).map(r => `
+  _latestSuggestions = results.slice(0, 8);
+  _suggestionIndex = -1;
+  suggestions.innerHTML = _latestSuggestions.map((r, idx) => `
     <li data-name="${r.full_name}">
       ${r.full_name}
       <span class="sug-team">${r.team || ""}</span>
@@ -299,9 +403,186 @@ function showSuggestions(results) {
 }
 
 function hideSuggestions() {
+  _latestSuggestions = [];
+  _suggestionIndex = -1;
   suggestions.hidden = true;
   suggestions.innerHTML = "";
 }
+
+function updateSuggestionActiveState() {
+  const items = suggestions.querySelectorAll("li");
+  items.forEach((li, idx) => {
+    li.classList.toggle("active", idx === _suggestionIndex);
+  });
+}
+
+comparePlayerSearch.addEventListener("input", () => {
+  clearTimeout(_compareDebounceTimer);
+  const q = comparePlayerSearch.value.trim();
+  if (q.length < 2) { hideCompareSuggestions(); return; }
+  _compareDebounceTimer = setTimeout(() => fetchCompareSuggestions(q), 250);
+});
+
+comparePlayerSearch.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" && _compareSuggestions.length > 0) {
+    e.preventDefault();
+    _compareSuggestionIndex = Math.min(_compareSuggestionIndex + 1, _compareSuggestions.length - 1);
+    updateCompareSuggestionActiveState();
+    return;
+  }
+  if (e.key === "ArrowUp" && _compareSuggestions.length > 0) {
+    e.preventDefault();
+    _compareSuggestionIndex = Math.max(_compareSuggestionIndex - 1, 0);
+    updateCompareSuggestionActiveState();
+    return;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (_compareSuggestionIndex >= 0 && _compareSuggestions[_compareSuggestionIndex]) {
+      comparePlayerSearch.value = _compareSuggestions[_compareSuggestionIndex].full_name;
+      hideCompareSuggestions();
+    }
+    comparePlayers();
+  }
+  if (e.key === "Escape") {
+    hideCompareSuggestions();
+  }
+});
+
+async function fetchCompareSuggestions(query) {
+  try {
+    const resp = await fetch(`/search/${encodeURIComponent(query)}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    showCompareSuggestions(data.results || []);
+  } catch {
+    hideCompareSuggestions();
+  }
+}
+
+function showCompareSuggestions(results) {
+  if (!results.length) { hideCompareSuggestions(); return; }
+  _compareSuggestions = results.slice(0, 8);
+  _compareSuggestionIndex = -1;
+  compareSuggestions.innerHTML = _compareSuggestions.map(r => `
+    <li data-name="${r.full_name}">
+      ${r.full_name}
+      <span class="sug-team">${r.team || ""}</span>
+    </li>
+  `).join("");
+  compareSuggestions.hidden = false;
+  compareSuggestions.querySelectorAll("li").forEach(li => {
+    li.addEventListener("click", () => {
+      comparePlayerSearch.value = li.dataset.name;
+      hideCompareSuggestions();
+      comparePlayers();
+    });
+  });
+}
+
+function hideCompareSuggestions() {
+  _compareSuggestions = [];
+  _compareSuggestionIndex = -1;
+  compareSuggestions.hidden = true;
+  compareSuggestions.innerHTML = "";
+}
+
+function updateCompareSuggestionActiveState() {
+  const items = compareSuggestions.querySelectorAll("li");
+  items.forEach((li, idx) => {
+    li.classList.toggle("active", idx === _compareSuggestionIndex);
+  });
+}
+
+function addRecentPlayer(name) {
+  if (!name) return;
+  const recent = JSON.parse(localStorage.getItem(_recentKey) || "[]");
+  const next = [name, ...recent.filter(n => n !== name)].slice(0, 6);
+  localStorage.setItem(_recentKey, JSON.stringify(next));
+  renderRecentPlayers();
+}
+
+function renderRecentPlayers() {
+  const recent = JSON.parse(localStorage.getItem(_recentKey) || "[]");
+  if (!recent.length) {
+    recentPlayersEl.hidden = true;
+    recentPlayersEl.innerHTML = "";
+    return;
+  }
+  recentPlayersEl.hidden = false;
+  recentPlayersEl.innerHTML = recent
+    .map(name => `<button class="recent-chip" data-name="${name}">${name}</button>`)
+    .join("");
+
+  recentPlayersEl.querySelectorAll(".recent-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.name;
+      playerSearch.value = name;
+      hideSuggestions();
+      generatePlayer(name);
+    });
+  });
+}
+
+renderRecentPlayers();
+
+async function comparePlayers() {
+  if (!_currentPlayerData) {
+    showError("Generate a base player first.");
+    return;
+  }
+  const name = comparePlayerSearch.value.trim();
+  if (!name) {
+    showError("Enter a player name to compare.");
+    return;
+  }
+
+  showSpinner(`Comparing with ${name}…`);
+  try {
+    const season = seasonSelect.value;
+    const resp = await fetch(`/generate/${encodeURIComponent(name)}?season=${season}`);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const compareData = await resp.json();
+
+    const left = _currentPlayerData.tendencies || {};
+    const right = compareData.tendencies || {};
+    const rows = Object.keys(left)
+      .filter(k => right[k])
+      .map(k => {
+        const a = Number(left[k].value || 0);
+        const b = Number(right[k].value || 0);
+        return {
+          label: left[k].label || k,
+          leftVal: a,
+          rightVal: b,
+          delta: b - a,
+        };
+      })
+      .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+      .slice(0, 24);
+
+    compareTitle.textContent = `${_currentPlayerData.player_name} vs ${compareData.player_name} (Top Δ tendencies)`;
+    compareTable.innerHTML = [
+      `<div class="compare-row header"><span>Tendency</span><span>${_currentPlayerData.player_name}</span><span>${compareData.player_name}</span><span>Δ</span></div>`,
+      ...rows.map(r => `<div class="compare-row"><span>${r.label}</span><span>${r.leftVal}</span><span>${r.rightVal}</span><span class="compare-delta ${r.delta >= 0 ? "pos" : "neg"}">${r.delta >= 0 ? "+" : ""}${r.delta}</span></div>`),
+    ].join("");
+
+    hideSpinner();
+    playerResult.hidden = false;
+    compareTitle.hidden = false;
+    compareTable.hidden = false;
+    teamResult.hidden = true;
+    hideError();
+  } catch (e) {
+    hideSpinner();
+    showError(`Error: ${e.message}`);
+  }
+}
+
+compareBtn.addEventListener("click", comparePlayers);
 
 // ── Team generation ────────────────────────────────────────────────────────
 generateTeamBtn.addEventListener("click", async () => {

@@ -79,6 +79,9 @@ def _build_tendency_response(
             "bit_length": entry["bit_length"],
             "length": entry["length"],
         }
+    guardrails = result.get("guardrail_violations", [])
+    errors = result.get("errors", [])
+    audit = result.get("audit", [])
     return {
         "player_name": player_name,
         "player_id": player_id,
@@ -86,6 +89,14 @@ def _build_tendency_response(
         "team": team,
         "season": season,
         "tendencies": ordered_tendencies,
+        "debug": {
+            "guardrail_count": len(guardrails),
+            "error_count": len(errors),
+            "guardrail_violations": guardrails,
+            "errors": errors,
+            "audit_sample": audit[:20],
+            "feature_summary": result.get("features", {}),
+        },
     }
 
 
