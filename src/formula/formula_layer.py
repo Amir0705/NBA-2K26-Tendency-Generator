@@ -379,22 +379,30 @@ class FormulaLayer:
 
         # ---------------------------------------------------------------
         # Category T: Sub-Zone Distributions (13 tendencies)
+        # Sub-zones are scaled by their parent tendency so that no sub-zone
+        # can exceed the parent value and all sub-zones sum to the parent.
         # ---------------------------------------------------------------
-        t["shot_close_left"] = dist_close.get("left", 33.3)
-        t["shot_close_middle"] = dist_close.get("middle", 33.4)
-        t["shot_close_right"] = dist_close.get("right", 33.3)
+        # Close sub-zones: scale by shot_close parent
+        _close_parent = t["shot_close"]
+        t["shot_close_left"] = dist_close.get("left", 33.3) * _close_parent / 100
+        t["shot_close_middle"] = dist_close.get("middle", 33.4) * _close_parent / 100
+        t["shot_close_right"] = dist_close.get("right", 33.3) * _close_parent / 100
 
-        t["shot_mid_left"] = dist_mid.get("left", 20.0)
-        t["shot_mid_left_center"] = dist_mid.get("left_center", 20.0)
-        t["shot_mid_center"] = dist_mid.get("center", 20.0)
-        t["shot_mid_right_center"] = dist_mid.get("right_center", 20.0)
-        t["shot_mid_right"] = dist_mid.get("right", 20.0)
+        # Mid sub-zones: scale by shot_mid_range parent
+        _mid_parent = t["shot_mid_range"]
+        t["shot_mid_left"] = dist_mid.get("left", 20.0) * _mid_parent / 100
+        t["shot_mid_left_center"] = dist_mid.get("left_center", 20.0) * _mid_parent / 100
+        t["shot_mid_center"] = dist_mid.get("center", 20.0) * _mid_parent / 100
+        t["shot_mid_right_center"] = dist_mid.get("right_center", 20.0) * _mid_parent / 100
+        t["shot_mid_right"] = dist_mid.get("right", 20.0) * _mid_parent / 100
 
-        t["shot_three_left"] = max(dist_three.get("left", 20.0), 8.0)
-        t["shot_three_left_center"] = dist_three.get("left_center", 20.0)
-        t["shot_three_center"] = dist_three.get("center", 20.0)
-        t["shot_three_right_center"] = dist_three.get("right_center", 20.0)
-        t["shot_three_right"] = max(dist_three.get("right", 20.0), 8.0)
+        # Three sub-zones: scale by shot_three parent
+        _three_parent = t["shot_three"]
+        t["shot_three_left"] = max(dist_three.get("left", 20.0), 8.0) * _three_parent / 100
+        t["shot_three_left_center"] = dist_three.get("left_center", 20.0) * _three_parent / 100
+        t["shot_three_center"] = dist_three.get("center", 20.0) * _three_parent / 100
+        t["shot_three_right_center"] = dist_three.get("right_center", 20.0) * _three_parent / 100
+        t["shot_three_right"] = max(dist_three.get("right", 20.0), 8.0) * _three_parent / 100
 
         return t
 

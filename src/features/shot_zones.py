@@ -105,6 +105,11 @@ class ShotZoneAnalyzer:
                 area_key = _area_to_three_key(basic, area)
                 three_area_counts[area_key] += 1
 
+        # Bayesian prior: add virtual shots to prevent extreme distributions
+        _CLOSE_PRIOR = 5
+        for k in close_counts:
+            close_counts[k] += _CLOSE_PRIOR
+
         total_fga = max(sum(zone_fga.values()), 1)
         total_min = max(total_minutes, 1)
 
@@ -160,9 +165,9 @@ def _area_to_close_key(basic: str, area: str, loc_x: float) -> str:
     # Restricted Area: always use LOC_X (area is always "Center(C)")
     basic = basic.strip()
     if basic == "Restricted Area":
-        if loc_x < -30:
+        if loc_x < -8:
             return "left"
-        if loc_x > 30:
+        if loc_x > 8:
             return "right"
         return "middle"
 
@@ -176,9 +181,9 @@ def _area_to_close_key(basic: str, area: str, loc_x: float) -> str:
         return "middle"
 
     # Fallback: use LOC_X when area is missing or unrecognized
-    if loc_x < -30:
+    if loc_x < -8:
         return "left"
-    if loc_x > 30:
+    if loc_x > 8:
         return "right"
     return "middle"
 
