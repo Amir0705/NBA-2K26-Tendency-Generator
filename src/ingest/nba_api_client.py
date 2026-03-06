@@ -52,7 +52,12 @@ class NBAApiClient:
 
     def search_player(self, name: str) -> list[dict[str, Any]]:
         """Search for players by name; returns list of matching records."""
-        all_players = self._get_all_players()
+        try:
+            all_players = self._get_all_players()
+        except Exception:  # noqa: BLE001
+            logger.warning("Live player list unavailable, falling back to static player list")
+            all_players = self._get_static_players()
+
         name_lower = name.lower()
         results = []
         for p in all_players:
@@ -532,8 +537,23 @@ class NBAApiClient:
 
         endpoint = self._with_retry(_call, endpoint_name="CommonAllPlayers")
         rows = _parse_response(endpoint, 0)
-        self._cache_set(cache_key, rows, ttl_seconds=86400)
+        if rows:  # Only cache non-empty results
+            self._cache_set(cache_key, rows, ttl_seconds=86400)
         return rows
+
+    def _get_static_players(self) -> list[dict]:
+        """Return the bundled offline player list as a fallback."""
+        from nba_api.stats.static import players as static_players  # noqa: PLC0415
+
+        return [
+            {
+                "PERSON_ID": p["id"],
+                "DISPLAY_FIRST_LAST": p["full_name"],
+                "TEAM_ABBREVIATION": "",
+                "ROSTERSTATUS": 1 if p.get("is_active", False) else 0,
+            }
+            for p in static_players.get_players()
+        ]
 
     def _rate_limit(self) -> None:
         """Enforce minimum gap between consecutive API calls."""
