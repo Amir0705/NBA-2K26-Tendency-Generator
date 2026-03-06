@@ -6,6 +6,7 @@ import pytest
 from src.features.shot_zones import (
     ShotZoneAnalyzer,
     ShotZoneBuilder,
+    _area_to_close_key,
     _bayesian_smooth,
     _classify_zone,
     ZONES,
@@ -119,8 +120,9 @@ class TestShotZoneAnalyzer:
         assert total == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_loc_x_minus100_is_left(self):
+        # Empty area triggers LOC_X fallback; loc_x=-100 < -40 → left
         analyzer = ShotZoneAnalyzer()
-        shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-100)] * 4
+        shots = [_make_shot("Restricted Area", "", loc_x=-100)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
         dist = result["sub_zone_distribution_close"]
         assert dist["left"] == pytest.approx(100.0, abs=0.5)
@@ -128,8 +130,9 @@ class TestShotZoneAnalyzer:
         assert dist["right"] == pytest.approx(0.0, abs=0.5)
 
     def test_close_shot_loc_x_plus100_is_right(self):
+        # Empty area triggers LOC_X fallback; loc_x=100 > 40 → right
         analyzer = ShotZoneAnalyzer()
-        shots = [_make_shot("In The Paint (Non-RA)", "Center(C)", loc_x=100)] * 4
+        shots = [_make_shot("In The Paint (Non-RA)", "", loc_x=100)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
         dist = result["sub_zone_distribution_close"]
         assert dist["right"] == pytest.approx(100.0, abs=0.5)
@@ -144,7 +147,7 @@ class TestShotZoneAnalyzer:
         assert dist["middle"] == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_loc_x_minus50_is_middle(self):
-        # loc_x=-50 is between -80 and 80, so it should still be "middle"
+        # area="Center(C)" → primary classifier returns "middle" regardless of loc_x
         analyzer = ShotZoneAnalyzer()
         shots = [_make_shot("Restricted Area", "Center(C)", loc_x=-50)] * 4
         result = analyzer.analyze(shots, total_minutes=100.0)
@@ -152,12 +155,12 @@ class TestShotZoneAnalyzer:
         assert dist["middle"] == pytest.approx(100.0, abs=0.5)
 
     def test_close_shot_realistic_mix_no_bucket_exceeds_50(self):
-        # Simulate a realistic distribution: some left, some middle, some right
+        # Simulate a realistic distribution using area strings for proper classification
         analyzer = ShotZoneAnalyzer()
         shots = (
-            [_make_shot("Restricted Area", "Center(C)", loc_x=-100)] * 25
+            [_make_shot("Restricted Area", "Left Side(L)", loc_x=-100)] * 25
             + [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 45
-            + [_make_shot("Restricted Area", "Center(C)", loc_x=100)] * 30
+            + [_make_shot("Restricted Area", "Right Side(R)", loc_x=100)] * 30
         )
         result = analyzer.analyze(shots, total_minutes=200.0)
         dist = result["sub_zone_distribution_close"]
@@ -195,6 +198,113 @@ class TestShotZoneAnalyzer:
         r10 = analyzer.analyze(shots10, total_minutes=200.0)
         r20 = analyzer.analyze(shots20, total_minutes=200.0)
         assert r20["zone_fga_per36"]["ra"] > r10["zone_fga_per36"]["ra"]
+
+
+class TestAreaToCloseKey:
+    def test_left_side_returns_left(self):
+        assert _area_to_close_key("Left Side(L)", 0) == "left"
+
+    def test_left_side_center_returns_left(self):
+        assert _area_to_close_key("Left Side Center(LC)", 0) == "left"
+
+    def test_right_side_returns_right(self):
+        assert _area_to_close_key("Right Side(R)", 0) == "right"
+
+    def test_right_side_center_returns_right(self):
+        assert _area_to_close_key("Right Side Center(RC)", 0) == "right"
+
+    def test_center_returns_middle(self):
+        assert _area_to_close_key("Center(C)", 0) == "middle"
+
+    def test_empty_area_fallback_left(self):
+        assert _area_to_close_key("", -50) == "left"
+
+    def test_empty_area_fallback_right(self):
+        assert _area_to_close_key("", 50) == "right"
+
+    def test_empty_area_fallback_middle(self):
+        assert _area_to_close_key("", 0) == "middle"
+
+    def test_empty_area_fallback_boundary_left(self):
+        assert _area_to_close_key("", -41) == "left"
+
+    def test_empty_area_fallback_boundary_right(self):
+        assert _area_to_close_key("", 41) == "right"
+
+    def test_empty_area_fallback_at_minus40(self):
+        # -40 is NOT < -40, so it should be middle
+        assert _area_to_close_key("", -40) == "middle"
+
+    def test_empty_area_fallback_at_plus40(self):
+        # 40 is NOT > 40, so it should be middle
+        assert _area_to_close_key("", 40) == "middle"
+
+    def test_area_overrides_loc_x(self):
+        # area="Left Side(L)" should win even with extreme positive loc_x
+        assert _area_to_close_key("Left Side(L)", 200) == "left"
+        # area="Right Side(R)" should win even with extreme negative loc_x
+        assert _area_to_close_key("Right Side(R)", -200) == "right"
+        # area="Center(C)" should win even with extreme loc_x
+        assert _area_to_close_key("Center(C)", -100) == "middle"
+
+    def test_whitespace_is_stripped(self):
+        assert _area_to_close_key("  Left Side(L)  ", 0) == "left"
+
+
+class TestCloseSubZoneAreaClassification:
+    """Integration tests: area-based close-shot classification via ShotZoneAnalyzer."""
+
+    def test_left_area_in_ra_classified_as_left(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("Restricted Area", "Left Side(L)", loc_x=0)] * 4
+        dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
+        assert dist["left"] == pytest.approx(100.0, abs=0.5)
+
+    def test_right_area_in_paint_classified_as_right(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("In The Paint (Non-RA)", "Right Side(R)", loc_x=0)] * 4
+        dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
+        assert dist["right"] == pytest.approx(100.0, abs=0.5)
+
+    def test_center_area_classified_as_middle(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 4
+        dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
+        assert dist["middle"] == pytest.approx(100.0, abs=0.5)
+
+    def test_empty_area_fallback_to_loc_x(self):
+        analyzer = ShotZoneAnalyzer()
+        shots_left = [_make_shot("Restricted Area", "", loc_x=-50)] * 3
+        shots_right = [_make_shot("Restricted Area", "", loc_x=50)] * 3
+        dist = analyzer.analyze(shots_left + shots_right, total_minutes=100.0)[
+            "sub_zone_distribution_close"
+        ]
+        assert dist["left"] == pytest.approx(50.0, abs=0.5)
+        assert dist["right"] == pytest.approx(50.0, abs=0.5)
+        assert dist["middle"] == pytest.approx(0.0, abs=0.5)
+
+    def test_realistic_mix_left_plus_right_greater_than_zero(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = (
+            [_make_shot("Restricted Area", "Left Side(L)", loc_x=-60)] * 20
+            + [_make_shot("Restricted Area", "Center(C)", loc_x=0)] * 50
+            + [_make_shot("Restricted Area", "Right Side(R)", loc_x=60)] * 30
+        )
+        dist = analyzer.analyze(shots, total_minutes=200.0)["sub_zone_distribution_close"]
+        assert dist["left"] == pytest.approx(20.0, abs=0.5)
+        assert dist["middle"] == pytest.approx(50.0, abs=0.5)
+        assert dist["right"] == pytest.approx(30.0, abs=0.5)
+        assert dist["left"] + dist["right"] > 0
+
+    def test_close_sub_zones_sum_to_100(self):
+        analyzer = ShotZoneAnalyzer()
+        shots = (
+            [_make_shot("Restricted Area", "Left Side(L)")] * 10
+            + [_make_shot("In The Paint (Non-RA)", "Center(C)")] * 20
+            + [_make_shot("Restricted Area", "Right Side(R)")] * 10
+        )
+        dist = analyzer.analyze(shots, total_minutes=100.0)["sub_zone_distribution_close"]
+        assert sum(dist.values()) == pytest.approx(100.0, abs=0.5)
 
 
 class TestShotZoneBuilder:

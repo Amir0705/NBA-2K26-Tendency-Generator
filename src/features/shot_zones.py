@@ -90,14 +90,10 @@ class ShotZoneAnalyzer:
                 zone_fga[zone] += 1
                 zone_fgm[zone] += made
 
-            # Sub-zone: close (ra + paint → left/middle/right by LOC_X)
+            # Sub-zone: close (ra + paint → left/middle/right by area, LOC_X fallback)
             if basic in ("Restricted Area", "In The Paint (Non-RA)"):
-                if loc_x < -80:
-                    close_counts["left"] += 1
-                elif loc_x > 80:
-                    close_counts["right"] += 1
-                else:
-                    close_counts["middle"] += 1
+                close_key = _area_to_close_key(area, loc_x)
+                close_counts[close_key] += 1
 
             # Sub-zone: mid-range (5-way area split)
             if basic == "Mid-Range":
@@ -151,6 +147,27 @@ def _bayesian_smooth(
 ) -> float:
     """Empirical Bayes shrinkage toward the prior rate."""
     return (makes + prior_strength * prior_rate) / (attempts + prior_strength)
+
+
+def _area_to_close_key(area: str, loc_x: float) -> str:
+    """Map shot_zone_area to close sub-zone (left/middle/right).
+
+    Uses the NBA API's shot_zone_area field as primary classifier.
+    Falls back to LOC_X with ±40 threshold when area is empty/unknown.
+    """
+    area = area.strip()
+    if area in ("Left Side(L)", "Left Side Center(LC)"):
+        return "left"
+    if area in ("Right Side(R)", "Right Side Center(RC)"):
+        return "right"
+    if area == "Center(C)":
+        return "middle"
+    # Fallback: use LOC_X when area is missing or unrecognized
+    if loc_x < -40:
+        return "left"
+    if loc_x > 40:
+        return "right"
+    return "middle"
 
 
 def _area_to_mid_key(area: str) -> str:
