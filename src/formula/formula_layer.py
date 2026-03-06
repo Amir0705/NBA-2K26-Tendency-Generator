@@ -19,10 +19,10 @@ class FormulaLayer:
     """Deterministic rule-based tendency calculator."""
 
     POSITION_PROFILES: dict[str, dict[str, float]] = {
-        "PG": {"post_scale": 0.05, "drive_boost": 1.15, "block_scale": 0.4, "dribble_boost": 1.2},
-        "SG": {"post_scale": 0.10, "drive_boost": 1.10, "block_scale": 0.5, "dribble_boost": 0.85},
-        "SF": {"post_scale": 0.30, "drive_boost": 1.00, "block_scale": 0.7, "dribble_boost": 0.95},
-        "PF": {"post_scale": 0.70, "drive_boost": 0.85, "block_scale": 0.9, "dribble_boost": 0.6},
+        "PG": {"post_scale": 0.20, "drive_boost": 1.15, "block_scale": 0.4, "dribble_boost": 1.2},
+        "SG": {"post_scale": 0.20, "drive_boost": 1.10, "block_scale": 0.5, "dribble_boost": 0.85},
+        "SF": {"post_scale": 0.50, "drive_boost": 1.00, "block_scale": 0.7, "dribble_boost": 0.95},
+        "PF": {"post_scale": 0.80, "drive_boost": 0.85, "block_scale": 0.9, "dribble_boost": 0.6},
         "C":  {"post_scale": 1.00, "drive_boost": 0.65, "block_scale": 1.0, "dribble_boost": 0.3},
     }
 
@@ -277,32 +277,36 @@ class FormulaLayer:
         # Category N: Post Play (17 tendencies)
         # ---------------------------------------------------------------
         post_score = (
-            scale(zpaint + zra, [0.1, 0.6], [0, 50]) * post_factor
+            scale(zpaint + zra, [0.1, 0.6], [0, 35]) * post_factor
         )
+        # Size gate: small guards (e.g. Curry) produce hard zeros for all post tendencies
+        if height_inches < 76 and weight_lbs < 210:
+            post_score = 0.0
         # Height/weight size factors: taller/heavier → better at power post moves
-        _h_post = scale(height_inches, [72, 84], [0.85, 1.15])
-        _w_post = scale(weight_lbs, [180, 270], [0.90, 1.10])
+        # Weight is a stronger driver (Wemby 225lbs < Embiid 280lbs despite greater height)
+        _h_post = scale(height_inches, [72, 84], [0.90, 1.10])
+        _w_post = scale(weight_lbs, [200, 280], [0.80, 1.20])
         _size_post = _h_post * _w_post
         # Finesse moves (spin) favour shorter/quicker players
         _spin_size = scale(height_inches, [72, 84], [1.20, 0.85])
 
         t["post_up"] = post_score * 1.0 * _size_post
-        t["post_shimmy_shot"] = post_score * 0.3
-        t["post_face_up"] = post_score * 0.7
-        t["post_back_down"] = post_score * (0.7 if pos == "C" else 0.6) * _size_post
-        t["post_aggressive_backdown"] = post_score * (0.5 if pos == "C" else 0.4) * _size_post
-        t["shoot_from_post"] = post_score * 0.8
-        t["post_hook_left"] = post_score * 0.2 * _size_post
-        t["post_hook_right"] = post_score * 0.2 * _size_post
-        t["post_fade_left"] = post_score * 0.25 * _size_post
-        t["post_fade_right"] = post_score * 0.25 * _size_post
+        t["post_shimmy_shot"] = post_score * 0.30
+        t["post_face_up"] = post_score * 0.70
+        t["post_back_down"] = post_score * 0.55 * _size_post
+        t["post_aggressive_backdown"] = post_score * 0.40 * _size_post
+        t["shoot_from_post"] = post_score * 0.70
+        t["post_hook_left"] = post_score * 0.15 * _size_post
+        t["post_hook_right"] = post_score * 0.15 * _size_post
+        t["post_fade_left"] = post_score * 0.27 * _size_post
+        t["post_fade_right"] = post_score * 0.27 * _size_post
         t["post_up_and_under"] = post_score * (0.5 if pos == "C" else 0.4)
-        t["post_hop_shot"] = post_score * 0.35
-        t["post_step_back_shot"] = post_score * 0.35
-        t["post_drive"] = post_score * 0.65
-        t["post_spin"] = post_score * 0.4 * _spin_size
-        t["post_drop_step"] = post_score * (0.55 if pos == "C" else 0.4)
-        t["post_hop_step"] = post_score * 0.3
+        t["post_hop_shot"] = post_score * 0.30
+        t["post_step_back_shot"] = post_score * 0.30
+        t["post_drive"] = post_score * 0.70
+        t["post_spin"] = post_score * 0.40 * _spin_size
+        t["post_drop_step"] = post_score * 0.40
+        t["post_hop_step"] = post_score * 0.30
 
         # ---------------------------------------------------------------
         # Category O: Playstyle Sliders
