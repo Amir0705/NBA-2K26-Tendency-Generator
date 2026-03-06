@@ -752,3 +752,133 @@ class TestImprovementPlan:
         r_unicorn = formula.generate(unicorn)
         r_trad = formula.generate(trad)
         assert r_unicorn["triple_threat_idle"] > r_trad["triple_threat_idle"]
+
+
+# ---------------------------------------------------------------------------
+# Calibration tests: 5-player post tendency targets (±5 tolerance)
+# ---------------------------------------------------------------------------
+
+_POST_CALIBRATION_KEYS = [
+    "post_up", "post_shimmy_shot", "post_face_up", "post_back_down",
+    "post_aggressive_backdown", "shoot_from_post", "post_hook_left",
+    "post_hook_right", "post_fade_left", "post_fade_right",
+    "post_hop_shot", "post_step_back_shot", "post_drive", "post_spin",
+    "post_drop_step",
+]
+
+_POST_TARGETS = {
+    "embiid": {
+        "post_up": 35, "post_shimmy_shot": 10, "post_face_up": 20,
+        "post_back_down": 20, "post_aggressive_backdown": 15, "shoot_from_post": 20,
+        "post_hook_left": 5, "post_hook_right": 5,
+        "post_fade_left": 10, "post_fade_right": 10,
+        "post_hop_shot": 10, "post_step_back_shot": 10,
+        "post_drive": 20, "post_spin": 10, "post_drop_step": 10,
+    },
+    "wemby": {
+        "post_up": 20, "post_shimmy_shot": 5, "post_face_up": 15,
+        "post_back_down": 15, "post_aggressive_backdown": 10, "shoot_from_post": 15,
+        "post_hook_left": 5, "post_hook_right": 5,
+        "post_fade_left": 5, "post_fade_right": 5,
+        "post_hop_shot": 5, "post_step_back_shot": 5,
+        "post_drive": 10, "post_spin": 5, "post_drop_step": 5,
+    },
+    "lebron": {
+        "post_up": 15, "post_shimmy_shot": 5, "post_face_up": 10,
+        "post_back_down": 10, "post_aggressive_backdown": 5, "shoot_from_post": 10,
+        "post_hook_left": 5, "post_hook_right": 5,
+        "post_fade_left": 5, "post_fade_right": 5,
+        "post_hop_shot": 5, "post_step_back_shot": 5,
+        "post_drive": 10, "post_spin": 5, "post_drop_step": 5,
+    },
+    "luka": {
+        "post_up": 10, "post_shimmy_shot": 0, "post_face_up": 5,
+        "post_back_down": 5, "post_aggressive_backdown": 0, "shoot_from_post": 5,
+        "post_hook_left": 0, "post_hook_right": 0,
+        "post_fade_left": 0, "post_fade_right": 0,
+        "post_hop_shot": 0, "post_step_back_shot": 0,
+        "post_drive": 5, "post_spin": 0, "post_drop_step": 0,
+    },
+    "curry": {k: 0 for k in _POST_CALIBRATION_KEYS},
+}
+
+
+def _post_player_features(pos: str, height_inches: int, weight_lbs: int,
+                           zpaint: float, zra: float) -> dict:
+    """Build a minimal feature dict for a specific player's post calibration."""
+    f = _minimal_features(pos)
+    f.update(
+        height_inches=height_inches,
+        weight_lbs=weight_lbs,
+        zone_fga_rate_paint=zpaint,
+        zone_fga_rate_ra=zra,
+        fg3a_rate=0.15,
+    )
+    return f
+
+
+class TestPostCalibration:
+    """Calibration tests ensuring post tendencies for 5 archetypes are within ±5 of targets."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    def _quantize(self, v: float) -> int:
+        return max(0, min(100, 5 * round(v / 5)))
+
+    def _check_player(self, formula, name: str, features: dict) -> None:
+        raw = formula.generate(features)
+        targets = _POST_TARGETS[name]
+        for key in _POST_CALIBRATION_KEYS:
+            computed = self._quantize(raw[key])
+            target = targets[key]
+            assert abs(computed - target) <= 5, (
+                f"{name} {key}: computed={computed}, target={target}, "
+                f"diff={abs(computed - target)} > 5"
+            )
+
+    def test_embiid_post_tendencies(self, formula):
+        """Embiid (C, 7'0"/84in, 280lbs): dominant post center."""
+        feats = _post_player_features("C", 84, 280, zpaint=0.30, zra=0.20)
+        self._check_player(formula, "embiid", feats)
+
+    def test_wembanyama_post_tendencies(self, formula):
+        """Wembanyama (C, 7'4"/88in, 225lbs): stretch center, less post than Embiid."""
+        feats = _post_player_features("C", 88, 225, zpaint=0.20, zra=0.15)
+        self._check_player(formula, "wemby", feats)
+
+    def test_lebron_post_tendencies(self, formula):
+        """LeBron (SF, 6'9"/81in, 250lbs): versatile forward."""
+        feats = _post_player_features("SF", 81, 250, zpaint=0.30, zra=0.20)
+        self._check_player(formula, "lebron", feats)
+
+    def test_luka_post_tendencies(self, formula):
+        """Luka (PG, 6'7"/79in, 230lbs): tall, heavy guard with some post play."""
+        feats = _post_player_features("PG", 79, 230, zpaint=0.30, zra=0.20)
+        self._check_player(formula, "luka", feats)
+
+    def test_curry_post_tendencies_all_zero(self, formula):
+        """Curry (PG, 6'2"/74in, 185lbs): small guard — all post tendencies must be 0."""
+        feats = _post_player_features("PG", 74, 185, zpaint=0.15, zra=0.05)
+        raw = formula.generate(feats)
+        for key in _POST_CALIBRATION_KEYS:
+            computed = self._quantize(raw[key])
+            assert computed == 0, (
+                f"Curry {key}: expected 0, got {computed}"
+            )
+
+    def test_wemby_lower_post_up_than_embiid(self, formula):
+        """Wembanyama should have lower post_up than Embiid (weight advantage)."""
+        embiid = _post_player_features("C", 84, 280, zpaint=0.30, zra=0.20)
+        wemby = _post_player_features("C", 88, 225, zpaint=0.20, zra=0.15)
+        assert formula.generate(embiid)["post_up"] > formula.generate(wemby)["post_up"]
+
+    def test_post_score_zero_for_size_gate_players(self, formula):
+        """Players below height/weight threshold get post_score=0 (hard zeros)."""
+        small_guard = _post_player_features("PG", 75, 205, zpaint=0.35, zra=0.25)
+        raw = formula.generate(small_guard)
+        for key in _POST_CALIBRATION_KEYS:
+            assert self._quantize(raw[key]) == 0, (
+                f"Small guard {key} should be 0, got {self._quantize(raw[key])}"
+            )
