@@ -408,13 +408,13 @@ class TestDifferentiationFixes:
         assert result["drive_right"] == pytest.approx(50.0)
 
     # --- triple_threat_idle ---
-    def test_triple_threat_idle_high_usage_lower_than_low_usage(self, formula):
-        """High-usage players should have lower triple_threat_idle."""
+    def test_triple_threat_idle_high_usage_higher_than_low_usage(self, formula):
+        """High-usage ISO creators should have higher triple_threat_idle (more ball-dominant)."""
         high_usg = dict(_minimal_features("PG"), usg_pct_proxy=0.33)
         low_usg = dict(_minimal_features("PG"), usg_pct_proxy=0.12)
         r_high = formula.generate(high_usg)
         r_low = formula.generate(low_usg)
-        assert r_high["triple_threat_idle"] < r_low["triple_threat_idle"]
+        assert r_high["triple_threat_idle"] > r_low["triple_threat_idle"]
 
     def test_triple_threat_idle_not_constant(self, formula):
         """triple_threat_idle must not be identical for all players."""
@@ -538,20 +538,20 @@ class TestImprovementPlan:
         r_pg = formula.generate(pg_f)
         assert r_c["triple_threat_idle"] > r_pg["triple_threat_idle"]
 
-    def test_idle_high_assists_lower_than_low_assists(self, formula):
-        """Playmaker with high assists should idle less than a non-passer."""
-        high_ast = dict(_minimal_features("PG"), ast_per36=10.0)
-        low_ast = dict(_minimal_features("PG"), ast_per36=1.5)
-        r_high = formula.generate(high_ast)
-        r_low = formula.generate(low_ast)
-        assert r_high["triple_threat_idle"] < r_low["triple_threat_idle"]
+    def test_idle_big_low_ast_lower_than_big_high_ast(self, formula):
+        """Traditional big (low AST) gets big_rescue → very low idle; unicorn big (high AST) gets higher."""
+        low_ast_big = dict(_minimal_features("C"), ast_per36=2.0)
+        high_ast_big = dict(_minimal_features("C"), ast_per36=6.0)
+        r_low = formula.generate(low_ast_big)
+        r_high = formula.generate(high_ast_big)
+        assert r_high["triple_threat_idle"] > r_low["triple_threat_idle"]
 
-    def test_idle_clamped_between_4_and_38(self, formula):
-        """triple_threat_idle must stay within [4, 38] for all positions."""
+    def test_idle_clamped_between_5_and_50(self, formula):
+        """triple_threat_idle must stay within [5, 50] for all positions."""
         for pos in ("PG", "SG", "SF", "PF", "C"):
             result = formula.generate(_minimal_features(pos))
             val = result["triple_threat_idle"]
-            assert 4.0 <= val <= 38.0, f"{pos}: triple_threat_idle={val}"
+            assert 5.0 <= val <= 50.0, f"{pos}: triple_threat_idle={val}"
 
     # --- 2. crash formula ---
     def test_crash_hustle_data_present(self, formula):
@@ -710,3 +710,45 @@ class TestImprovementPlan:
         r_short = formula.generate(short_pg)
         r_tall = formula.generate(tall_pg)
         assert r_short["driving_dribble_hesitation"] > r_tall["driving_dribble_hesitation"]
+
+    # --- 10. triple_threat_idle archetype validation ---
+    def test_iso_creator_higher_idle_than_pure_shooter(self, formula):
+        """ISO creator (high USG, low fg3a) should idle more than pure shooter (low USG, high fg3a)."""
+        iso_creator = dict(_minimal_features("SG"), usg_pct_proxy=0.30, fg3a_rate=0.20,
+                           zone_fga_rate_ra=0.15)
+        pure_shooter = dict(_minimal_features("SG"), usg_pct_proxy=0.15, fg3a_rate=0.55,
+                            zone_fga_rate_ra=0.10)
+        r_iso = formula.generate(iso_creator)
+        r_shooter = formula.generate(pure_shooter)
+        assert r_iso["triple_threat_idle"] > r_shooter["triple_threat_idle"]
+
+    def test_slasher_lower_idle_than_methodical_creator(self, formula):
+        """Slasher (high zra, lower USG) should idle less than methodical ball-handler."""
+        slasher = dict(_minimal_features("PG"), usg_pct_proxy=0.20, zone_fga_rate_ra=0.50,
+                       fg3a_rate=0.20)
+        methodical = dict(_minimal_features("PG"), usg_pct_proxy=0.30, zone_fga_rate_ra=0.15,
+                          fg3a_rate=0.25)
+        r_slash = formula.generate(slasher)
+        r_meth = formula.generate(methodical)
+        assert r_slash["triple_threat_idle"] < r_meth["triple_threat_idle"]
+
+    def test_traditional_big_very_low_idle(self, formula):
+        """Traditional big (C, low AST) should get big_rescue → very low idle (≤ 10).
+
+        10.0 is the upper bound for the 'Gobert/Capela' bucket in the expected archetype
+        table (5–10 idle). The big rescue factor (0.3×) keeps these players firmly low.
+        """
+        trad_big = dict(_minimal_features("C"), ast_per36=1.5, fg3a_rate=0.02,
+                        zone_fga_rate_ra=0.55, usg_pct_proxy=0.15)
+        result = formula.generate(trad_big)
+        assert result["triple_threat_idle"] <= 10.0
+
+    def test_unicorn_big_higher_idle_than_traditional_big(self, formula):
+        """Unicorn big (C, high AST like Jokic) should idle more than traditional rim-runner."""
+        unicorn = dict(_minimal_features("C"), ast_per36=8.0, usg_pct_proxy=0.28,
+                       fg3a_rate=0.15, zone_fga_rate_ra=0.30)
+        trad = dict(_minimal_features("C"), ast_per36=1.5, usg_pct_proxy=0.12,
+                    fg3a_rate=0.02, zone_fga_rate_ra=0.55)
+        r_unicorn = formula.generate(unicorn)
+        r_trad = formula.generate(trad)
+        assert r_unicorn["triple_threat_idle"] > r_trad["triple_threat_idle"]

@@ -198,13 +198,37 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         t["triple_threat_pump_fake"] = scale(shot_mid_range + shot_three, [0, 100], [10, 45])
         t["triple_threat_jab_step"] = scale(drive, [0, 60], [10, 40])
-        # Multi-factor idle: usage (high → less idle), assists (playmakers move more),
-        # position (guards idle less), and physical size (bigger players idle more)
-        _usg_idle = scale(usg, [0.10, 0.35], [28, 8])
-        _ast_idle_adj = scale(ast_p36, [1.0, 10.0], [0, 8])
-        _pos_idle_adj = {"PG": -4, "SG": -2, "SF": 0, "PF": 3, "C": 6}.get(pos, 0)
-        _size_idle = scale(height_inches, [72, 84], [-2, 3]) + scale(weight_lbs, [180, 270], [-1, 2])
-        t["triple_threat_idle"] = max(4.0, min(38.0, _usg_idle - _ast_idle_adj + _pos_idle_adj + _size_idle))
+        # --- triple_threat_idle: models "think time / decision time before acting"
+        # LOW idle = fast decision maker (slashers, shooters, traditional bigs)
+        # HIGH idle = methodical ISO creator who probes the defense (SGA, Luka, Harden)
+        #
+        # Step 1: Creation factor — high-USG players are ball-dominant and need more
+        # time on ball to probe the defense before committing.
+        # Output range [10, 40]: low-USG player starts at 10, elite ISO creator reaches 40.
+        _idle_creation = scale(usg, [0.10, 0.35], [10, 40])
+        # Step 2: Speed proxy — taller players are physically slower to initiate moves,
+        # so they idle longer before attacking.
+        # Range [0.6, 1.3]: 6-0" (72 in) guard = 0.6× multiplier (fast); 7-0" (84 in) = 1.3×.
+        _idle_speed = scale(height_inches, [72, 84], [0.6, 1.3])
+        # Step 3: Quick-trigger reduction — shooters (high fg3a_rate) catch-and-shoot
+        # without deliberation; slashers (high zra) attack the rim immediately.
+        # Coefficients: fg3a_rate × 0.4 (slightly less impactful) + zra × 0.5 (rimrunners
+        # are the quickest trigger). Floor of 0.1 prevents total elimination of idle.
+        _idle_quick_trigger = max(0.1, 1.0 - (fg3a_rate * 0.4 + zra * 0.5))
+        # Step 4: Big rescue — traditional bigs catch and act immediately (catch→dunk/pass).
+        # Exception: unicorn bigs with high AST (Jokic-type) scan the floor like guards
+        # and warrant normal idle.
+        # Threshold 4.0 ast/36 distinguishes playmaking bigs from rim-runners.
+        # Rescue factor 0.3 pushes traditional bigs firmly into the 5–10 idle range.
+        _idle_is_big = pos in ("C", "PF")
+        if _idle_is_big and ast_p36 < 4.0:
+            _idle_big_rescue = 0.3   # traditional big: force very low idle
+        elif _idle_is_big:
+            _idle_big_rescue = 1.0   # unicorn big (high AST): allow normal idle
+        else:
+            _idle_big_rescue = 1.0
+        _idle_raw = _idle_creation * _idle_speed * _idle_quick_trigger * _idle_big_rescue
+        t["triple_threat_idle"] = max(5.0, min(50.0, _idle_raw))
         t["triple_threat_shoot"] = scale(shot_three + shot_mid_range, [0, 100], [10, 45])
 
         # ---------------------------------------------------------------
