@@ -126,6 +126,19 @@ class Guardrails:
                 f"<= {shot_three}",
             )
 
+        # 6f. Idle ↔ discipline guardrail:
+        # triple_threat_idle + triple_threat_pump_fake should not both be very high —
+        # idling while also being pump-fake disciplined is contradictory
+        triple_idle = tendencies.get("triple_threat_idle", 0)
+        triple_pump = tendencies.get("triple_threat_pump_fake", 0)
+        if triple_idle + triple_pump > 75:
+            _fix(
+                "triple_threat_idle",
+                max(0.0, 75.0 - triple_pump),
+                "triple_threat_idle + triple_threat_pump_fake <= 75",
+                f"<= {max(0.0, 75.0 - triple_pump):.1f}",
+            )
+
         # 7. Sub-zone families should sum between 80 and 120
         sub_zone_families = [
             (

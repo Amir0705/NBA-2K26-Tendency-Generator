@@ -520,3 +520,193 @@ class TestDifferentiationFixes:
             result = formula.generate(_minimal_features(pos))
             for k, v in result.items():
                 assert v >= 0.0, f"{pos} {k} = {v}"
+
+
+class TestImprovementPlan:
+    """Tests for the 10-point improvement plan formulas."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    # --- 1. triple_threat_idle multi-factor ---
+    def test_idle_big_higher_than_guard_same_usage(self, formula):
+        """Tall/heavy C should idle more than a PG with identical stats."""
+        c_f = dict(_minimal_features("C"), height_inches=84, weight_lbs=260)
+        pg_f = dict(_minimal_features("PG"), height_inches=74, weight_lbs=190)
+        r_c = formula.generate(c_f)
+        r_pg = formula.generate(pg_f)
+        assert r_c["triple_threat_idle"] > r_pg["triple_threat_idle"]
+
+    def test_idle_high_assists_lower_than_low_assists(self, formula):
+        """Playmaker with high assists should idle less than a non-passer."""
+        high_ast = dict(_minimal_features("PG"), ast_per36=10.0)
+        low_ast = dict(_minimal_features("PG"), ast_per36=1.5)
+        r_high = formula.generate(high_ast)
+        r_low = formula.generate(low_ast)
+        assert r_high["triple_threat_idle"] < r_low["triple_threat_idle"]
+
+    def test_idle_clamped_between_4_and_38(self, formula):
+        """triple_threat_idle must stay within [4, 38] for all positions."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            val = result["triple_threat_idle"]
+            assert 4.0 <= val <= 38.0, f"{pos}: triple_threat_idle={val}"
+
+    # --- 2. crash formula ---
+    def test_crash_hustle_data_present(self, formula):
+        """With hustle data available, crash should scale with loose balls + charges."""
+        low_hustle = dict(_minimal_features("SG"),
+                          hustle_loose_balls_pg=0.1, hustle_charges_drawn_pg=0.0)
+        high_hustle = dict(_minimal_features("SG"),
+                           hustle_loose_balls_pg=1.3, hustle_charges_drawn_pg=0.4)
+        r_low = formula.generate(low_hustle)
+        r_high = formula.generate(high_hustle)
+        assert r_high["crash"] > r_low["crash"]
+
+    def test_crash_position_defaults_when_no_hustle_data(self, formula):
+        """Without hustle data, crash falls back to position-based defaults."""
+        c_f = _minimal_features("C")   # no hustle stats → sentinel -1.0
+        pg_f = _minimal_features("PG")
+        r_c = formula.generate(c_f)
+        r_pg = formula.generate(pg_f)
+        assert r_c["crash"] > r_pg["crash"]
+        assert r_c["crash"] == pytest.approx(22.0)
+        assert r_pg["crash"] == pytest.approx(15.0)
+
+    def test_crash_capped_at_45(self, formula):
+        """crash should never exceed 45 even for elite hustlers."""
+        f = dict(_minimal_features("PF"),
+                 hustle_loose_balls_pg=2.0, hustle_charges_drawn_pg=1.0)
+        result = formula.generate(f)
+        assert result["crash"] <= 45.0
+
+    def test_crash_non_negative(self, formula):
+        """crash must always be non-negative."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            assert result["crash"] >= 0.0, f"{pos}: crash={result['crash']}"
+
+    # --- 3. height/weight as speed proxy ---
+    def test_tall_heavy_player_higher_idle(self, formula):
+        """Tall + heavy player should produce higher idle than short + light."""
+        tall = dict(_minimal_features("SF"), height_inches=83, weight_lbs=260)
+        short = dict(_minimal_features("SF"), height_inches=73, weight_lbs=185)
+        assert formula.generate(tall)["triple_threat_idle"] > formula.generate(short)["triple_threat_idle"]
+
+    def test_tall_player_more_power_post_moves(self, formula):
+        """Taller center should get higher post_up than a shorter one."""
+        tall_c = dict(_minimal_features("C"), height_inches=84, weight_lbs=265)
+        short_c = dict(_minimal_features("C"), height_inches=78, weight_lbs=220,
+                       zone_fga_rate_ra=0.35, zone_fga_rate_paint=0.20)
+        tall_c.update(zone_fga_rate_ra=0.35, zone_fga_rate_paint=0.20)
+        r_tall = formula.generate(tall_c)
+        r_short = formula.generate(short_c)
+        assert r_tall["post_up"] > r_short["post_up"]
+
+    # --- 4. shooting efficiency for contested shots ---
+    def test_high_fg_pct_yields_higher_contested_mid(self, formula):
+        """High FG% player should have higher contested_jumper_mid_range."""
+        high_eff = dict(_minimal_features("SG"), fg_pct=0.55)
+        low_eff = dict(_minimal_features("SG"), fg_pct=0.40)
+        r_high = formula.generate(high_eff)
+        r_low = formula.generate(low_eff)
+        assert r_high["contested_jumper_mid_range"] > r_low["contested_jumper_mid_range"]
+
+    def test_high_fg3_pct_yields_higher_contested_three(self, formula):
+        """High 3P% player should have higher contested_jumper_three."""
+        high_3 = dict(_minimal_features("SG"), fg3_pct=0.42)
+        low_3 = dict(_minimal_features("SG"), fg3_pct=0.30)
+        r_high = formula.generate(high_3)
+        r_low = formula.generate(low_3)
+        assert r_high["contested_jumper_three"] > r_low["contested_jumper_three"]
+
+    def test_high_fg_pct_yields_higher_stepback_mid(self, formula):
+        """High FG% player should have higher stepback_jumper_mid_range."""
+        high_eff = dict(_minimal_features("PG"), fg_pct=0.55)
+        low_eff = dict(_minimal_features("PG"), fg_pct=0.40)
+        assert (formula.generate(high_eff)["stepback_jumper_mid_range"] >
+                formula.generate(low_eff)["stepback_jumper_mid_range"])
+
+    def test_high_fg3_pct_yields_higher_stepback_three(self, formula):
+        """High 3P% player should have higher stepback_jumper_three."""
+        high_3 = dict(_minimal_features("PG"), fg3_pct=0.42)
+        low_3 = dict(_minimal_features("PG"), fg3_pct=0.30)
+        assert (formula.generate(high_3)["stepback_jumper_three"] >
+                formula.generate(low_3)["stepback_jumper_three"])
+
+    # --- 5. ast_to_tov for flashy pass gating ---
+    def test_disciplined_passer_lower_flashy_pass(self, formula):
+        """Player with high ast_to_tov (disciplined) should have lower flashy_pass."""
+        disciplined = dict(_minimal_features("PG"), ast_per36=8.0, ast_to_tov=3.5)
+        reckless = dict(_minimal_features("PG"), ast_per36=8.0, ast_to_tov=0.5)
+        r_d = formula.generate(disciplined)
+        r_r = formula.generate(reckless)
+        assert r_d["flashy_pass"] < r_r["flashy_pass"]
+
+    def test_flashy_pass_still_driven_by_assists(self, formula):
+        """Regardless of ast_to_tov, more assists → more flashy_pass."""
+        high_ast = dict(_minimal_features("PG"), ast_per36=12.0, ast_to_tov=1.5)
+        low_ast = dict(_minimal_features("PG"), ast_per36=2.0, ast_to_tov=1.5)
+        assert formula.generate(high_ast)["flashy_pass"] > formula.generate(low_ast)["flashy_pass"]
+
+    # --- 6. ISO confidence ---
+    def test_high_ts_pct_yields_higher_iso(self, formula):
+        """High-TS% player should have higher ISO tendencies."""
+        elite = dict(_minimal_features("SG"), ts_pct=0.65, usg_pct_proxy=0.28)
+        average = dict(_minimal_features("SG"), ts_pct=0.48, usg_pct_proxy=0.28)
+        r_elite = formula.generate(elite)
+        r_avg = formula.generate(average)
+        assert r_elite["iso_vs_average_defender"] > r_avg["iso_vs_average_defender"]
+        assert r_elite["iso_vs_poor_defender"] > r_avg["iso_vs_poor_defender"]
+
+    def test_iso_vs_elite_lower_than_vs_poor(self, formula):
+        """iso_vs_elite_defender should always be less than iso_vs_poor_defender."""
+        for pos in ("PG", "SG", "SF", "PF", "C"):
+            result = formula.generate(_minimal_features(pos))
+            assert result["iso_vs_elite_defender"] <= result["iso_vs_poor_defender"]
+
+    # --- 7. Percentile influence on shot ---
+    def test_high_percentile_boosts_shot(self, formula):
+        """Top-percentile scorer should get a shot boost vs low-percentile scorer."""
+        top = dict(_minimal_features("SG"), pctile_pts=0.90)
+        bottom = dict(_minimal_features("SG"), pctile_pts=0.15)
+        assert formula.generate(top)["shot"] > formula.generate(bottom)["shot"]
+
+    # --- 8. Post move size diversification ---
+    def test_center_higher_drop_step_than_pg(self, formula):
+        """Center should have higher post_drop_step than PG with same paint zone."""
+        c_f = dict(_minimal_features("C"), zone_fga_rate_ra=0.35, zone_fga_rate_paint=0.20)
+        pg_f = dict(_minimal_features("PG"), zone_fga_rate_ra=0.35, zone_fga_rate_paint=0.20)
+        assert formula.generate(c_f)["post_drop_step"] > formula.generate(pg_f)["post_drop_step"]
+
+    def test_shorter_player_more_post_spin(self, formula):
+        """Shorter player should have relatively higher post_spin (finesse move)."""
+        short_sf = dict(_minimal_features("SF"), height_inches=74,
+                        zone_fga_rate_ra=0.30, zone_fga_rate_paint=0.20)
+        tall_sf = dict(_minimal_features("SF"), height_inches=82,
+                       zone_fga_rate_ra=0.30, zone_fga_rate_paint=0.20)
+        r_short = formula.generate(short_sf)
+        r_tall = formula.generate(tall_sf)
+        assert r_short["post_spin"] > r_tall["post_spin"]
+
+    # --- 9. Dribble move position diversification ---
+    def test_guard_higher_crossover_than_center(self, formula):
+        """PG should have a much higher driving_crossover than C."""
+        pg_f = dict(_minimal_features("PG"), usg_pct_proxy=0.22)
+        c_f = dict(_minimal_features("C"), usg_pct_proxy=0.22)
+        assert formula.generate(pg_f)["driving_crossover"] > formula.generate(c_f)["driving_crossover"]
+
+    def test_guard_higher_behind_back_than_big(self, formula):
+        """PG should have higher driving_behind_the_back than PF."""
+        pg_f = dict(_minimal_features("PG"), usg_pct_proxy=0.22)
+        pf_f = dict(_minimal_features("PF"), usg_pct_proxy=0.22)
+        assert formula.generate(pg_f)["driving_behind_the_back"] > formula.generate(pf_f)["driving_behind_the_back"]
+
+    def test_shorter_guard_more_hesitation_than_taller(self, formula):
+        """Shorter guard should have more driving_dribble_hesitation than taller guard."""
+        short_pg = dict(_minimal_features("PG"), height_inches=72, weight_lbs=175)
+        tall_pg = dict(_minimal_features("PG"), height_inches=80, weight_lbs=210)
+        r_short = formula.generate(short_pg)
+        r_tall = formula.generate(tall_pg)
+        assert r_short["driving_dribble_hesitation"] > r_tall["driving_dribble_hesitation"]

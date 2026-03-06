@@ -136,3 +136,51 @@ class TestSanitiseTendencies:
         result = sanitise_tendencies({"shot": "abc", "drive": 30})
         assert "shot" not in result
         assert result["drive"] == 30
+
+
+class TestIdleDisciplineGuardrail:
+    """Tests for the idle ↔ discipline guardrail (6f)."""
+
+    @pytest.fixture(scope="class")
+    def guardrails(self):
+        return Guardrails()
+
+    def test_idle_and_pump_fake_sum_too_high_corrected(self, guardrails):
+        """When idle + pump_fake > 75, triple_threat_idle is reduced."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 55
+        t["triple_threat_pump_fake"] = 30
+        violations = guardrails.check(t)
+        assert any(v["tendency"] == "triple_threat_idle" for v in violations)
+        assert t["triple_threat_idle"] + t["triple_threat_pump_fake"] <= 75
+
+    def test_idle_and_pump_fake_within_limit_no_violation(self, guardrails):
+        """When idle + pump_fake <= 75, no correction occurs."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 30
+        t["triple_threat_pump_fake"] = 40
+        orig_idle = t["triple_threat_idle"]
+        violations = guardrails.check(t)
+        # No correction should have been applied to triple_threat_idle for this rule:
+        # the sum is 70 which is within the 75 limit, so idle must be unchanged
+        assert t["triple_threat_idle"] == orig_idle
+
+    def test_idle_clamped_to_zero_minimum(self, guardrails):
+        """triple_threat_idle should not go below 0 after guardrail correction."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 40
+        t["triple_threat_pump_fake"] = 75
+        guardrails.check(t)
+        assert t["triple_threat_idle"] >= 0.0
+
+    def test_violation_has_required_fields(self, guardrails):
+        """Guardrail violation must have all required fields."""
+        t = _base_tendencies()
+        t["triple_threat_idle"] = 60
+        t["triple_threat_pump_fake"] = 20
+        violations = guardrails.check(t)
+        idle_v = [v for v in violations if v["tendency"] == "triple_threat_idle"]
+        assert len(idle_v) >= 1
+        for v in idle_v:
+            for field in ("rule", "tendency", "value", "expected", "action_taken"):
+                assert field in v
