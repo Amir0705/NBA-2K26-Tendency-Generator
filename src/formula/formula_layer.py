@@ -276,8 +276,10 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category N: Post Play (17 tendencies)
         # ---------------------------------------------------------------
+        # zpaint (paint non-RA) reflects actual post-up shots; zra captures dunks/putbacks.
+        # Weighting zpaint at a 3:1 ratio over zra separates post scorers from rim-runners.
         post_score = (
-            scale(zpaint + zra, [0.1, 0.6], [0, 35]) * post_factor
+            scale(zpaint * 1.5 + zra * 0.5, [0.1, 0.6], [0, 35]) * post_factor
         )
         # Size gate: small guards (e.g. Curry) produce hard zeros for all post tendencies
         if height_inches < 76 and weight_lbs < 210:
@@ -289,22 +291,25 @@ class FormulaLayer:
         _size_post = _h_post * _w_post
         # Finesse moves (spin) favour shorter/quicker players
         _spin_size = scale(height_inches, [72, 84], [1.20, 0.85])
+        # Finesse gate: face-up, spin, and fade moves require playmaking ability;
+        # low-assist rim-runners (Gobert/Capela) get suppressed values for these moves.
+        _finesse_gate = scale(ast_p36, [1.0, 4.0], [0.3, 1.0])
 
         t["post_up"] = post_score * 1.0 * _size_post
         t["post_shimmy_shot"] = post_score * 0.30
-        t["post_face_up"] = post_score * 0.70
+        t["post_face_up"] = post_score * 0.70 * _finesse_gate
         t["post_back_down"] = post_score * 0.55 * _size_post
         t["post_aggressive_backdown"] = post_score * 0.40 * _size_post
         t["shoot_from_post"] = post_score * 0.70
-        t["post_hook_left"] = post_score * 0.15 * _size_post
-        t["post_hook_right"] = post_score * 0.15 * _size_post
-        t["post_fade_left"] = post_score * 0.27 * _size_post
-        t["post_fade_right"] = post_score * 0.27 * _size_post
+        t["post_hook_left"] = post_score * 0.20 * _size_post
+        t["post_hook_right"] = post_score * 0.20 * _size_post
+        t["post_fade_left"] = post_score * 0.27 * _size_post * _finesse_gate
+        t["post_fade_right"] = post_score * 0.27 * _size_post * _finesse_gate
         t["post_up_and_under"] = post_score * (0.5 if pos == "C" else 0.4)
         t["post_hop_shot"] = post_score * 0.30
         t["post_step_back_shot"] = post_score * 0.30
         t["post_drive"] = post_score * 0.70
-        t["post_spin"] = post_score * 0.40 * _spin_size
+        t["post_spin"] = post_score * 0.40 * _spin_size * _finesse_gate
         t["post_drop_step"] = post_score * 0.40
         t["post_hop_step"] = post_score * 0.30
 
