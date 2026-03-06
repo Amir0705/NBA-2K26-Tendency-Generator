@@ -39,6 +39,7 @@ const playerResult    = document.getElementById("playerResult");
 const playerNameEl    = document.getElementById("playerName");
 const playerMetaEl    = document.getElementById("playerMeta");
 const tendenciesContainer = document.getElementById("tendenciesContainer");
+const trackingStatusEl    = document.getElementById("trackingStatus");
 const spinner         = document.getElementById("spinner");
 const spinnerText     = document.getElementById("spinnerText");
 const errorBanner     = document.getElementById("errorBanner");
@@ -78,6 +79,30 @@ function hideError() {
 
 function safeName(name) {
   return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+// ── Tracking status indicator ─────────────────────────────────────────────
+function renderTrackingStatus(status) {
+  if (!status) return "";
+  const sources = [
+    { key: "play_types_available", label: "Play Types" },
+    { key: "tracking_shots_available", label: "Tracking Shots" },
+    { key: "hustle_available", label: "Hustle Stats" },
+    { key: "passing_available", label: "Passing Tracking" },
+  ];
+  const available = sources.filter(s => status[s.key]).length;
+  const total = sources.length;
+  const color = available === total ? "high" : available >= 2 ? "med" : "low";
+
+  const pills = sources.map(s =>
+    `<span class="tracking-pill ${status[s.key] ? "active" : "inactive"}">${status[s.key] ? "✅" : "❌"} ${s.label}</span>`
+  ).join("");
+
+  return `
+    <div class="tracking-status">
+      <span class="tracking-summary tracking-${color}">📊 Data Sources: ${available}/${total}</span>
+      <div class="tracking-pills">${pills}</div>
+    </div>`;
 }
 
 // ── Tendency bar rendering ─────────────────────────────────────────────────
@@ -140,6 +165,7 @@ async function generatePlayer(playerName) {
     // Reset log panel for new generation
     if (logPanel) logPanel.hidden = true;
     if (showLogBtn) showLogBtn.textContent = "📊 Show Log";
+    if (trackingStatusEl) trackingStatusEl.innerHTML = "";
 
     playerNameEl.textContent = data.player_name;
     playerMetaEl.textContent = [data.position, data.team, data.season]
@@ -155,6 +181,9 @@ async function generatePlayer(playerName) {
     }
 
     renderTendencies(enriched);
+    if (trackingStatusEl) {
+      trackingStatusEl.innerHTML = renderTrackingStatus(data.tracking_data_status);
+    }
     hideSpinner();
     teamResult.hidden = true;
     playerResult.hidden = false;
