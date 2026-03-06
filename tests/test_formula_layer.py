@@ -882,3 +882,190 @@ class TestPostCalibration:
             assert self._quantize(raw[key]) == 0, (
                 f"Small guard {key} should be 0, got {self._quantize(raw[key])}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Rim-runner archetype calibration tests
+# ---------------------------------------------------------------------------
+
+def _rim_runner_features() -> dict:
+    """Gobert/Capela-type rim-running center."""
+    f = _minimal_features("C")
+    f.update(
+        zone_fga_rate_ra=0.45,
+        zone_fga_rate_paint=0.10,
+        ast_per36=1.5,
+        usg_pct_proxy=0.14,
+        fg3a_rate=0.02,
+    )
+    return f
+
+
+def _jokic_features() -> dict:
+    """Elite post playmaker (Jokic type): high assists, moderate paint, high usage."""
+    f = _minimal_features("C")
+    f.update(
+        ast_per36=9.0,
+        usg_pct_proxy=0.28,
+        zone_fga_rate_paint=0.20,
+        zone_fga_rate_ra=0.20,
+        fg3a_rate=0.15,
+    )
+    return f
+
+
+def _ad_features() -> dict:
+    """Traditional post scorer (AD/Embiid type): high paint+RA, moderate assists, high usage."""
+    f = _minimal_features("C")
+    f.update(
+        zone_fga_rate_paint=0.30,
+        zone_fga_rate_ra=0.25,
+        ast_per36=3.5,
+        usg_pct_proxy=0.28,
+        fg3a_rate=0.08,
+    )
+    return f
+
+
+def _guard_features() -> dict:
+    """Perimeter guard: low paint/RA rates."""
+    f = _minimal_features("PG")
+    f.update(
+        zone_fga_rate_paint=0.05,
+        zone_fga_rate_ra=0.15,
+        ast_per36=7.0,
+        usg_pct_proxy=0.22,
+    )
+    return f
+
+
+class TestRimRunnerPostCalibration:
+    """Calibration tests ensuring rim-runner post tendencies are low-moderate, not near-zero,
+    while finesse moves are appropriately suppressed for low-assist players."""
+
+    @pytest.fixture(scope="class")
+    def formula(self):
+        return FormulaLayer()
+
+    # --- Rim-runner (Gobert/Capela type) ---
+
+    def test_rim_runner_post_up_in_low_moderate_range(self, formula):
+        """Rim-running center post_up should be in 10–20 range (not near-zero, not too high)."""
+        raw = formula.generate(_rim_runner_features())
+        assert 10 <= raw["post_up"] <= 20, (
+            f"rim-runner post_up={raw['post_up']:.2f} not in [10, 20]"
+        )
+
+    def test_rim_runner_post_drop_step_present(self, formula):
+        """Rim-runner should have post_drop_step > 5 (they use this move)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_drop_step"] > 5, (
+            f"rim-runner post_drop_step={raw['post_drop_step']:.2f} not > 5"
+        )
+
+    def test_rim_runner_post_hook_present(self, formula):
+        """Rim-runner should get some hook shot credit (left or right > 3)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_hook_left"] > 3 or raw["post_hook_right"] > 3, (
+            f"rim-runner hooks: left={raw['post_hook_left']:.2f}, right={raw['post_hook_right']:.2f}"
+        )
+
+    def test_rim_runner_post_fade_suppressed(self, formula):
+        """Rim-runner post_fade_left and post_fade_right should be < 5 (finesse gate)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_fade_left"] < 5, (
+            f"rim-runner post_fade_left={raw['post_fade_left']:.2f} not < 5"
+        )
+        assert raw["post_fade_right"] < 5, (
+            f"rim-runner post_fade_right={raw['post_fade_right']:.2f} not < 5"
+        )
+
+    def test_rim_runner_post_spin_suppressed(self, formula):
+        """Rim-runner post_spin should be < 5 (finesse gate)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_spin"] < 5, (
+            f"rim-runner post_spin={raw['post_spin']:.2f} not < 5"
+        )
+
+    def test_rim_runner_post_face_up_suppressed(self, formula):
+        """Rim-runner post_face_up should be < 10 (not a face-up player)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_face_up"] < 10, (
+            f"rim-runner post_face_up={raw['post_face_up']:.2f} not < 10"
+        )
+
+    def test_rim_runner_post_up_not_zero(self, formula):
+        """Rim-runner post_up must be > 0 (not near-zero, unlike prior formula)."""
+        raw = formula.generate(_rim_runner_features())
+        assert raw["post_up"] > 0, "rim-runner post_up should be non-zero"
+
+    # --- Elite post playmaker (Jokic type) ---
+
+    def test_jokic_type_has_highest_post_face_up(self, formula):
+        """Jokic-type (high ast) should have higher post_face_up than rim-runner."""
+        jokic = formula.generate(_jokic_features())
+        gobert = formula.generate(_rim_runner_features())
+        assert jokic["post_face_up"] > gobert["post_face_up"], (
+            f"jokic post_face_up={jokic['post_face_up']:.2f} not > "
+            f"gobert post_face_up={gobert['post_face_up']:.2f}"
+        )
+
+    def test_jokic_type_high_post_drive(self, formula):
+        """Jokic-type should have non-trivial post_drive (playmaking center)."""
+        raw = formula.generate(_jokic_features())
+        assert raw["post_drive"] > 10, (
+            f"jokic post_drive={raw['post_drive']:.2f} not > 10"
+        )
+
+    # --- Traditional post scorer (AD/Embiid type) ---
+
+    def test_ad_type_high_post_up(self, formula):
+        """AD/Embiid-type should have high post_up (dominant post scorer)."""
+        raw = formula.generate(_ad_features())
+        assert raw["post_up"] > 20, (
+            f"AD-type post_up={raw['post_up']:.2f} not > 20"
+        )
+
+    def test_ad_type_high_post_back_down(self, formula):
+        """AD/Embiid-type should have high post_back_down."""
+        raw = formula.generate(_ad_features())
+        assert raw["post_back_down"] > 10, (
+            f"AD-type post_back_down={raw['post_back_down']:.2f} not > 10"
+        )
+
+    def test_ad_type_high_post_hooks(self, formula):
+        """AD/Embiid-type should have meaningful hook shot values."""
+        raw = formula.generate(_ad_features())
+        assert raw["post_hook_left"] > 3 and raw["post_hook_right"] > 3, (
+            f"AD-type hooks: left={raw['post_hook_left']:.2f}, right={raw['post_hook_right']:.2f}"
+        )
+
+    # --- Perimeter players (guards/wings) ---
+
+    def test_guard_near_zero_post_tendencies(self, formula):
+        """Perimeter guard should have near-zero post tendencies."""
+        raw = formula.generate(_guard_features())
+        for key in ("post_up", "post_back_down", "post_hook_left", "post_hook_right"):
+            assert raw[key] < 5, (
+                f"guard {key}={raw[key]:.2f} should be near-zero"
+            )
+
+    # --- Comparison tests ---
+
+    def test_ad_back_down_greater_than_gobert_back_down(self, formula):
+        """AD-type post_back_down > Gobert-type post_back_down."""
+        ad = formula.generate(_ad_features())
+        gobert = formula.generate(_rim_runner_features())
+        assert ad["post_back_down"] > gobert["post_back_down"]
+
+    def test_gobert_drop_step_greater_than_guard_drop_step(self, formula):
+        """Gobert-type post_drop_step > guard-type post_drop_step."""
+        gobert = formula.generate(_rim_runner_features())
+        guard = formula.generate(_guard_features())
+        assert gobert["post_drop_step"] > guard["post_drop_step"]
+
+    def test_all_values_non_negative_rim_runner(self, formula):
+        """All tendency values must be non-negative for rim-runner archetype."""
+        raw = formula.generate(_rim_runner_features())
+        for k, v in raw.items():
+            assert v >= 0.0, f"rim-runner {k}={v} is negative"
