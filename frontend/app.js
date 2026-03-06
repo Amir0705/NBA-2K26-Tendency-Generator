@@ -383,7 +383,10 @@ async function fetchSuggestions(query) {
     if (!resp.ok) return;
     const data = await resp.json();
     showSuggestions(data.results || []);
-  } catch { /* ignore search errors */ }
+  } catch {
+    // Show a brief non-blocking hint so user knows search is degraded
+    console.warn("Player search request failed");
+  }
 }
 
 function showSuggestions(results) {
