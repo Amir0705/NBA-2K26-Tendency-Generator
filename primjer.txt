@@ -1,0 +1,895 @@
+{
+  "tendencies": {
+    "0422_5_7_Step Through Shot": {
+      "value": 1,
+      "label": "Step Through Shot",
+      "offset": 1058,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0424_0_7_Shot Under Basket": {
+      "value": 16,
+      "label": "Shot Under Basket",
+      "offset": 1060,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0424_7_7_Shot Close": {
+      "value": 29,
+      "label": "Shot Close",
+      "offset": 1060,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0425_6_7_Shot Close Left": {
+      "value": 20,
+      "label": "Shot Close Left",
+      "offset": 1061,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0426_5_7_Shot Close Middle": {
+      "value": 50,
+      "label": "Shot Close Middle",
+      "offset": 1062,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0428_0_7_Shot Close Right": {
+      "value": 23,
+      "label": "Shot Close Right",
+      "offset": 1064,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0428_7_7_Shot Mid-Range": {
+      "value": 16,
+      "label": "Shot Mid-Range",
+      "offset": 1064,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0429_6_7_Spot Up Shot Mid-Range": {
+      "value": 11,
+      "label": "Spot Up Shot Mid-Range",
+      "offset": 1065,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "042a_5_7_Off Screen Shot Mid-Range": {
+      "value": 10,
+      "label": "Off Screen Shot Mid-Range",
+      "offset": 1066,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "042c_0_7_Shot Mid Left": {
+      "value": 30,
+      "label": "Shot Mid Left",
+      "offset": 1068,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "042c_7_7_Shot Mid Left-Center": {
+      "value": 12,
+      "label": "Shot Mid Left-Center",
+      "offset": 1068,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "042d_6_7_Shot Mid Center": {
+      "value": 18,
+      "label": "Shot Mid Center",
+      "offset": 1069,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "042e_5_7_Shot Mid Right-Center": {
+      "value": 15,
+      "label": "Shot Mid Right-Center",
+      "offset": 1070,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0430_0_7_Shot Mid Right": {
+      "value": 26,
+      "label": "Shot Mid Right",
+      "offset": 1072,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0430_7_7_Shot Three": {
+      "value": 60,
+      "label": "Shot Three",
+      "offset": 1072,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0431_6_7_Spot Up Shot Three": {
+      "value": 51,
+      "label": "Spot Up Shot Three",
+      "offset": 1073,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0432_5_7_Off Screen Shot Three": {
+      "value": 39,
+      "label": "Off Screen Shot Three",
+      "offset": 1074,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0434_0_7_Shot Three Left": {
+      "value": 7,
+      "label": "Shot Three Left",
+      "offset": 1076,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0434_7_7_Shot Three Left-Center": {
+      "value": 28,
+      "label": "Shot Three Left-Center",
+      "offset": 1076,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0435_6_7_Shot Three Center": {
+      "value": 24,
+      "label": "Shot Three Center",
+      "offset": 1077,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0436_5_7_Shot Three Right-Center": {
+      "value": 37,
+      "label": "Shot Three Right-Center",
+      "offset": 1078,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0438_0_7_Shot Three Right": {
+      "value": 4,
+      "label": "Shot Three Right",
+      "offset": 1080,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0438_7_7_Contested Jumper Three": {
+      "value": 21,
+      "label": "Contested Jumper Three",
+      "offset": 1080,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0439_6_7_Contested Jumper Mid-Range": {
+      "value": 9,
+      "label": "Contested Jumper Mid-Range",
+      "offset": 1081,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "043a_5_7_Stepback Jumper Three": {
+      "value": 14,
+      "label": "Stepback Jumper Three",
+      "offset": 1082,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "043c_0_7_Stepback Jumper Mid-Range": {
+      "value": 9,
+      "label": "Stepback Jumper Mid-Range",
+      "offset": 1084,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "043c_7_7_Spin Jumper": {
+      "value": 5,
+      "label": "Spin Jumper",
+      "offset": 1084,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "043d_6_7_Transition Pull Up Three": {
+      "value": 15,
+      "label": "Transition Pull Up Three",
+      "offset": 1085,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "043e_5_7_Drive Pull Up Three": {
+      "value": 30,
+      "label": "Drive Pull Up Three",
+      "offset": 1086,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0440_0_7_Drive Pull Up Mid-Range": {
+      "value": 14,
+      "label": "Drive Pull Up Mid-Range",
+      "offset": 1088,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0440_7_7_Use Glass": {
+      "value": 25,
+      "label": "Use Glass",
+      "offset": 1088,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0418_0_7_Driving Layup": {
+      "value": 49,
+      "label": "Driving Layup",
+      "offset": 1048,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0418_7_7_Standing Dunk": {
+      "value": 1,
+      "label": "Standing Dunk",
+      "offset": 1048,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0419_6_7_Driving Dunk": {
+      "value": 13,
+      "label": "Driving Dunk",
+      "offset": 1049,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "041a_5_7_Flashy Dunk": {
+      "value": 7,
+      "label": "Flashy Dunk",
+      "offset": 1050,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "041c_0_7_Alley-Oop": {
+      "value": 1,
+      "label": "Alley-Oop",
+      "offset": 1052,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "041c_7_7_Putback": {
+      "value": 1,
+      "label": "Putback",
+      "offset": 1052,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "041d_6_7_Crash": {
+      "value": 10,
+      "label": "Crash",
+      "offset": 1053,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "041e_5_7_Spin Layup": {
+      "value": 10,
+      "label": "Spin Layup",
+      "offset": 1054,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0420_0_7_Hop Step Layup": {
+      "value": 8,
+      "label": "Hop Step Layup",
+      "offset": 1056,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0420_7_7_Euro Step Layup": {
+      "value": 10,
+      "label": "Euro Step Layup",
+      "offset": 1056,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0421_6_7_Floater": {
+      "value": 22,
+      "label": "Floater",
+      "offset": 1057,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0445_6_7_Triple Threat Pump Fake": {
+      "value": 37,
+      "label": "Triple Threat Pump Fake",
+      "offset": 1093,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0446_5_7_Triple Threat Jab Step": {
+      "value": 23,
+      "label": "Triple Threat Jab Step",
+      "offset": 1094,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0448_0_7_Triple Threat Idle": {
+      "value": 20,
+      "label": "Triple Threat Idle",
+      "offset": 1096,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0448_7_7_Triple Threat Shoot": {
+      "value": 37,
+      "label": "Triple Threat Shoot",
+      "offset": 1096,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0449_6_7_Setup With Sizeup": {
+      "value": 21,
+      "label": "Setup With Sizeup",
+      "offset": 1097,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "044a_5_7_Setup With Hesitation": {
+      "value": 19,
+      "label": "Setup With Hesitation",
+      "offset": 1098,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "044c_0_7_No Setup Dribble": {
+      "value": 31,
+      "label": "No Setup Dribble",
+      "offset": 1100,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0441_6_7_Drive": {
+      "value": 26,
+      "label": "Drive",
+      "offset": 1089,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0442_5_7_Spot Up Drive": {
+      "value": 18,
+      "label": "Spot Up Drive",
+      "offset": 1090,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0444_0_7_Off Screen Drive": {
+      "value": 13,
+      "label": "Off Screen Drive",
+      "offset": 1092,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0444_7_7_Drive Right": {
+      "value": 50,
+      "label": "Drive Right",
+      "offset": 1092,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "044c_7_7_Driving Crossover": {
+      "value": 13,
+      "label": "Driving Crossover",
+      "offset": 1100,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "044d_6_7_Driving Spin": {
+      "value": 11,
+      "label": "Driving Spin",
+      "offset": 1101,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "044e_5_7_Driving Step Back": {
+      "value": 12,
+      "label": "Driving Step Back",
+      "offset": 1102,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0450_0_7_Driving Half Spin": {
+      "value": 9,
+      "label": "Driving Half Spin",
+      "offset": 1104,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0450_7_7_Driving Double Crossover": {
+      "value": 9,
+      "label": "Driving Double Crossover",
+      "offset": 1104,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0451_6_7_Driving Behind The Back": {
+      "value": 9,
+      "label": "Driving Behind The Back",
+      "offset": 1105,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0452_5_7_Driving Dribble Hesitation": {
+      "value": 13,
+      "label": "Driving Dribble Hesitation",
+      "offset": 1106,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0454_0_7_Driving In And Out": {
+      "value": 11,
+      "label": "Driving In And Out",
+      "offset": 1108,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0454_7_7_No Driving Dribble Move": {
+      "value": 65,
+      "label": "No Driving Dribble Move",
+      "offset": 1108,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0455_6_7_Attack Strong On Drive": {
+      "value": 32,
+      "label": "Attack Strong On Drive",
+      "offset": 1109,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0456_5_7_Dish To Open Man": {
+      "value": 15,
+      "label": "Dish To Open Man",
+      "offset": 1110,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0470_7_7_Flashy Pass": {
+      "value": 6,
+      "label": "Flashy Pass",
+      "offset": 1136,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0471_6_7_Alley-Oop Pass": {
+      "value": 6,
+      "label": "Alley-Oop Pass",
+      "offset": 1137,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0458_7_7_Post Up": {
+      "value": 1,
+      "label": "Post Up",
+      "offset": 1112,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0460_7_7_Post Shimmy Shot": {
+      "value": 0,
+      "label": "Post Shimmy Shot",
+      "offset": 1120,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0461_6_7_Post Face Up": {
+      "value": 1,
+      "label": "Post Face Up",
+      "offset": 1121,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0462_5_7_Post Back Down": {
+      "value": 1,
+      "label": "Post Back Down",
+      "offset": 1122,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0464_0_7_Post Aggressive Backdown": {
+      "value": 0,
+      "label": "Post Aggressive Backdown",
+      "offset": 1124,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0464_7_7_Shoot From Post": {
+      "value": 1,
+      "label": "Shoot From Post",
+      "offset": 1124,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0465_6_7_Post Hook Left": {
+      "value": 0,
+      "label": "Post Hook Left",
+      "offset": 1125,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0466_5_7_Post Hook Right": {
+      "value": 0,
+      "label": "Post Hook Right",
+      "offset": 1126,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0468_0_7_Post Fade Left": {
+      "value": 0,
+      "label": "Post Fade Left",
+      "offset": 1128,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0468_7_7_Post Fade Right": {
+      "value": 0,
+      "label": "Post Fade Right",
+      "offset": 1128,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0469_6_7_Post Up And Under": {
+      "value": 0,
+      "label": "Post Up And Under",
+      "offset": 1129,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "046a_5_7_Post Hop Shot": {
+      "value": 0,
+      "label": "Post Hop Shot",
+      "offset": 1130,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "046c_0_7_Post Step Back Shot": {
+      "value": 0,
+      "label": "Post Step Back Shot",
+      "offset": 1132,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "046c_7_7_Post Drive": {
+      "value": 1,
+      "label": "Post Drive",
+      "offset": 1132,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "046d_6_7_Post Spin": {
+      "value": 0,
+      "label": "Post Spin",
+      "offset": 1133,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "046e_5_7_Post Drop Step": {
+      "value": 0,
+      "label": "Post Drop Step",
+      "offset": 1134,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0470_0_7_Post Hop Step": {
+      "value": 0,
+      "label": "Post Hop Step",
+      "offset": 1136,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0417_0_7_Shot": {
+      "value": 23,
+      "label": "Shot",
+      "offset": 1047,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0458_0_7_Touches": {
+      "value": 22,
+      "label": "Touches",
+      "offset": 1112,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0459_6_7_Roll vs. Pop": {
+      "value": 50,
+      "label": "Roll vs. Pop",
+      "offset": 1113,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "045a_5_7_Transition Spot Up": {
+      "value": 70,
+      "label": "Transition Spot Up",
+      "offset": 1114,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "045c_0_7_Iso vs. Elite Defender": {
+      "value": 5,
+      "label": "Iso vs. Elite Defender",
+      "offset": 1116,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "045c_7_7_Iso vs. Good Defender": {
+      "value": 6,
+      "label": "Iso vs. Good Defender",
+      "offset": 1116,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "045d_6_7_Iso vs. Average Defender": {
+      "value": 8,
+      "label": "Iso vs. Average Defender",
+      "offset": 1117,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "045e_5_7_Iso vs. Poor Defender": {
+      "value": 9,
+      "label": "Iso vs. Poor Defender",
+      "offset": 1118,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0460_0_7_Play Discipline": {
+      "value": 60,
+      "label": "Play Discipline",
+      "offset": 1120,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0472_5_7_Pass Interception": {
+      "value": 15,
+      "label": "Pass Interception",
+      "offset": 1138,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0474_0_7_Take Charge": {
+      "value": 5,
+      "label": "Take Charge",
+      "offset": 1140,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0474_7_7_On-Ball Steal": {
+      "value": 15,
+      "label": "On-Ball Steal",
+      "offset": 1140,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    },
+    "0475_6_7_Contest Shot": {
+      "value": 35,
+      "label": "Contest Shot",
+      "offset": 1141,
+      "type": "bitfield",
+      "bit_offset": 6,
+      "bit_length": 7,
+      "length": null
+    },
+    "0476_5_7_Block Shot": {
+      "value": 5,
+      "label": "Block Shot",
+      "offset": 1142,
+      "type": "bitfield",
+      "bit_offset": 5,
+      "bit_length": 7,
+      "length": null
+    },
+    "0478_0_7_Foul": {
+      "value": 15,
+      "label": "Foul",
+      "offset": 1144,
+      "type": "bitfield",
+      "bit_offset": 0,
+      "bit_length": 7,
+      "length": null
+    },
+    "0478_7_7_Hard Foul": {
+      "value": 0,
+      "label": "Hard Foul",
+      "offset": 1144,
+      "type": "bitfield",
+      "bit_offset": 7,
+      "bit_length": 7,
+      "length": null
+    }
+  }
+}

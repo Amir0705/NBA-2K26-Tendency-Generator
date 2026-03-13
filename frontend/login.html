@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - NBA 2K26 ATD Committee Helper Tool</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>NBA 2K26 ATD Committee Helper Tool</h1>
+      <p class="tagline">Sign in to continue</p>
+    </div>
+  </header>
+
+  <main class="login-shell">
+    <section class="card auth-card login-card">
+      <div id="loginPanel">
+        <h2>Login</h2>
+        <div class="auth-grid login-grid">
+          <input type="text" id="loginUsername" class="input" placeholder="Username" autocomplete="username" />
+          <input type="password" id="loginPassword" class="input" placeholder="Password" autocomplete="current-password" />
+          <button id="loginBtn" class="btn btn-primary">Login</button>
+        </div>
+      </div>
+
+      <div id="mustChangePanel" hidden>
+        <h3>Change Password</h3>
+        <p class="tagline">First login detected. Set your new password to continue.</p>
+        <div class="auth-grid login-grid">
+          <input type="password" id="newPassword" class="input" placeholder="New password" autocomplete="new-password" />
+          <button id="changePasswordBtn" class="btn btn-primary">Save New Password</button>
+        </div>
+      </div>
+
+      <div id="loginError" class="error-banner" hidden></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>NBA 2K26 ATD Committee Helper Tool · Powered by nba_api</p>
+  </footer>
+
+  <script src="/static/login.js"></script>
+</body>
+</html>

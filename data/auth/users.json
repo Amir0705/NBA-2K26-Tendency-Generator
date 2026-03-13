@@ -1,0 +1,27 @@
+{
+  "users": {
+    "admin": {
+      "full_name": "Administrator",
+      "role": "admin",
+      "password_hash": "pbkdf2_sha256$3wEvZ64q9X3PTuQiXuruww==$v2KgWYAgsduq0roeuTzSzS+ghL/SooIq2sXQtPJ8GNg=",
+      "must_change_password": false,
+      "created_at": 1773443392,
+      "password_changed_at": 1773443734
+    },
+    "PlainSightToSee": {
+      "full_name": "Plain",
+      "role": "editor",
+      "password_hash": "pbkdf2_sha256$81oq9yxYr/HS+JTNYAxlFQ==$Pof4ZaIx3u7J9lN0q15EWFSA79omTOBduFKak++Eoj0=",
+      "must_change_password": true,
+      "created_at": 1773444057
+    },
+    "Am1G3": {
+      "full_name": "Amaka",
+      "role": "editor",
+      "password_hash": "pbkdf2_sha256$GfKIqOagabCDAiFTBjASfA==$njPfV4dHShfuMJU9CzgFtdm0Z/ZCej3HEwu1KlTOkuY=",
+      "must_change_password": false,
+      "created_at": 1773444783,
+      "password_changed_at": 1773444805
+    }
+  }
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Users - NBA 2K26 ATD Committee Helper Tool</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>Admin User Management</h1>
+      <p class="tagline">View, add, edit, and delete users</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="card auth-card">
+      <div class="auth-row app-auth-row">
+        <div>
+          <div id="adminWelcome" class="player-name"></div>
+          <div id="adminRole" class="player-meta"></div>
+        </div>
+        <div class="auth-actions">
+          <button id="openAppBtn" class="btn">Open Generator</button>
+          <button id="adminLogoutBtn" class="btn">Logout</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="adminError" class="error-banner" hidden></div>
+
+    <section class="card">
+      <h2>Create User</h2>
+      <div class="auth-grid admin-grid">
+        <input type="text" id="createFullName" class="input" placeholder="Full name" />
+        <input type="text" id="createUsername" class="input" placeholder="Username" />
+        <input type="password" id="createPassword" class="input" placeholder="Temporary password" />
+        <select id="createRole" class="input select">
+          <option value="viewer">viewer</option>
+          <option value="editor">editor</option>
+          <option value="admin">admin</option>
+        </select>
+        <button id="createUserBtn" class="btn btn-primary">Create User</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Users</h2>
+      <div id="usersTableWrap" class="users-table-wrap"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>NBA 2K26 ATD Committee Helper Tool · Powered by nba_api</p>
+  </footer>
+
+  <script src="/static/admin.js"></script>
+</body>
+</html>
