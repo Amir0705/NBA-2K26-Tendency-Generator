@@ -15,9 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.auth_store import AuthStore
 from src.api.firebase_auth_store import FirebaseAuthStore
-from src.export.csv_exporter import export_player_csv, export_team_csv
 from src.export.excel_exporter import export_player_excel, export_team_excel, export_team_attributes_excel
 from src.export.json_exporter import export_player_json
+from src.export.two_k_exporter import export_player_2k_json
 from src.attributes.calculator import ATTRIBUTE_LABELS, ATTRIBUTE_CATEGORIES
 from src.feedback.feedback_store import FeedbackStore
 from src.feedback.firebase_feedback_store import FirebaseFeedbackStore
@@ -657,18 +657,26 @@ def _resolve_player(player_name: str, season: str, pipeline: TendencyPipeline) -
     return full_name, position, tendencies
 
 
-@app.get("/export/csv/{player_name}")
-def export_csv_player(player_name: str, season: str = "2024-25") -> Response:
-    """Export a single player's tendencies as a CSV file."""
-    pipeline = _get_pipeline()
-    full_name, position, tendencies = _resolve_player(player_name, season, pipeline)
-    csv_str = export_player_csv(full_name, tendencies, pipeline._registry, position)
-    filename = f"{_safe_filename(full_name)}_tendencies.csv"
-    return Response(
-        content=csv_str,
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+def _resolve_player_full(
+    player_name: str,
+    season: str,
+    pipeline: TendencyPipeline,
+) -> tuple[str, int, str, dict[str, Any]]:
+    """Search, generate, and return full player generation context."""
+    results = pipeline.search_player(player_name)
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    name_lower = player_name.lower()
+    match = next((r for r in results if r.get("full_name", "").lower() == name_lower), results[0])
+    pid = int(match["player_id"])
+    full_name = str(match.get("full_name") or player_name)
+    team = str(match.get("team") or "")
+    try:
+        result = pipeline.generate(pid, season=season)
+        result = _apply_feedback_learning(player_id=pid, result=result)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to generate tendencies: {exc}") from exc
+    return full_name, pid, team, result
 
 
 @app.get("/export/excel/{player_name}")
@@ -681,41 +689,6 @@ def export_excel_player(player_name: str, season: str = "2024-25") -> Response:
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@app.get("/export/csv/team/{team_abbr}")
-def export_csv_team(
-    team_abbr: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
-) -> Response:
-    """Export a full team's tendencies as a CSV file."""
-    abbr = team_abbr.upper()
-    if abbr not in _VALID_TEAMS:
-        raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
-    pipeline = _get_pipeline()
-    roster = pipeline._client.get_team_roster(abbr, season=roster_season)
-    if not roster:
-        raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
-    team_data: list[dict[str, Any]] = []
-    for player in roster:
-        try:
-            result = pipeline.generate(player["player_id"], season=season)
-            result = _apply_feedback_learning(player_id=player["player_id"], result=result)
-            team_data.append({
-                "player_name": player["full_name"],
-                "position": result.get("position", ""),
-                "tendencies": result.get("tendencies", {}),
-            })
-        except Exception:  # noqa: BLE001
-            continue
-    csv_str = export_team_csv(team_data, pipeline._registry)
-    filename = f"{abbr}_roster_tendencies.csv"
-    return Response(
-        content=csv_str,
-        media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -790,13 +763,34 @@ def export_excel_team_attributes(
     )
 
 
-@app.get("/export/json/team/{team_abbr}")
-def export_json_team_zip(
+@app.get("/export/2k/{player_name}")
+def export_2k_player(player_name: str, season: str = "2024-25") -> Response:
+    """Export a single player as a full 2K-style JSON using the template format."""
+    pipeline = _get_pipeline()
+    full_name, pid, team, result = _resolve_player_full(player_name, season, pipeline)
+    payload = export_player_2k_json(
+        player_name=full_name,
+        player_id=pid,
+        team=team,
+        tendencies=result.get("tendencies", {}),
+        attributes=result.get("attributes", {}),
+        registry=pipeline._registry,
+    )
+    filename = f"{_safe_filename(full_name)}_2k_export.json"
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/export/2k/team/{team_abbr}")
+def export_2k_team_zip(
     team_abbr: str,
     season: str = "2024-25",
     roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
 ) -> Response:
-    """Export a team's tendencies as a ZIP with one JSON file per player."""
+    """Export a team's players as a ZIP of full 2K-style JSON files."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
@@ -809,19 +803,25 @@ def export_json_team_zip(
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for player in roster:
-            pid = player["player_id"]
-            full_name = player["full_name"]
+            pid = int(player["player_id"])
+            full_name = str(player.get("full_name") or pid)
             try:
                 result = pipeline.generate(pid, season=season)
                 result = _apply_feedback_learning(player_id=pid, result=result)
-                tendencies = result.get("tendencies", {})
-                player_json = export_player_json(tendencies, pipeline._registry)
-                member_name = f"{_safe_filename(full_name)}_{pid}_tendencies.json"
+                player_json = export_player_2k_json(
+                    player_name=full_name,
+                    player_id=pid,
+                    team=abbr,
+                    tendencies=result.get("tendencies", {}),
+                    attributes=result.get("attributes", {}),
+                    registry=pipeline._registry,
+                )
+                member_name = f"{_safe_filename(full_name)}_{pid}_2k_export.json"
                 zf.writestr(member_name, player_json)
             except Exception:  # noqa: BLE001
                 continue
 
-    filename = f"{abbr}_roster_tendencies_json.zip"
+    filename = f"{abbr}_roster_2k_export.zip"
     return Response(
         content=zip_buffer.getvalue(),
         media_type="application/zip",

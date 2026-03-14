@@ -83,9 +83,7 @@ const errorBanner     = document.getElementById("errorBanner");
 const teamResult      = document.getElementById("teamResult");
 const teamTitle       = document.getElementById("teamTitle");
 const teamAccordion   = document.getElementById("teamAccordion");
-const copyJsonBtn     = document.getElementById("copyJsonBtn");
-const dlJsonBtn       = document.getElementById("dlJsonBtn");
-const dlCsvBtn        = document.getElementById("dlCsvBtn");
+const dl2kJsonBtn     = document.getElementById("dl2kJsonBtn");
 const dlExcelBtn      = document.getElementById("dlExcelBtn");
 const toggleDebugBtn  = document.getElementById("toggleDebugBtn");
 const debugPanel      = document.getElementById("debugPanel");
@@ -462,55 +460,10 @@ function guessCategoryFromKey(key) {
 }
 
 // ── Export helpers ─────────────────────────────────────────────────────────
-function buildJsonPayload(data) {
-  // Build primjer.txt-compatible JSON from current data
-  const tendencies = {};
-  for (const [key, entry] of Object.entries(data.tendencies)) {
-    tendencies[key] = {
-      value: entry.value,
-      label: entry.label,
-      offset: entry.offset,
-      type: entry.type,
-      bit_offset: entry.bit_offset,
-      bit_length: entry.bit_length,
-      length: entry.length,
-    };
-  }
-  return JSON.stringify({ tendencies }, null, 2);
-}
-
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-copyJsonBtn.addEventListener("click", async () => {
-  if (!_currentPlayerData) return;
-  try {
-    await navigator.clipboard.writeText(buildJsonPayload(_currentPlayerData));
-    copyJsonBtn.textContent = "✅ Copied!";
-    setTimeout(() => { copyJsonBtn.textContent = "📋 Copy JSON"; }, 2000);
-  } catch {
-    copyJsonBtn.textContent = "❌ Failed";
-    setTimeout(() => { copyJsonBtn.textContent = "📋 Copy JSON"; }, 2000);
-  }
-});
-
-dlJsonBtn.addEventListener("click", () => {
-  if (!_currentPlayerData) return;
-  const name = safeName(_currentPlayerData.player_name);
-  downloadBlob(buildJsonPayload(_currentPlayerData), `${name}_tendencies.json`, "application/json");
-});
-
-dlCsvBtn.addEventListener("click", () => {
+dl2kJsonBtn.addEventListener("click", () => {
   if (!_currentPlayerData) return;
   const season = seasonSelect.value;
-  window.location.href = `/export/csv/${encodeURIComponent(_currentPlayerData.player_name)}?season=${season}`;
+  window.location.href = `/export/2k/${encodeURIComponent(_currentPlayerData.player_name)}?season=${season}`;
 });
 
 dlExcelBtn.addEventListener("click", () => {
@@ -837,10 +790,9 @@ function renderTeam(data, season) {
   if (teamExportDiv) {
     const rosterSeasonQuery = encodeURIComponent(rosterSeason);
     teamExportDiv.innerHTML = `
-      <button class="btn btn-sm" onclick="window.location.href='/export/csv/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team CSV</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/2k/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📦 Export Team 2K JSON ZIP</button>
       <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team Excel</button>
       <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}/attributes?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Attributes Excel</button>
-      <button class="btn btn-sm" onclick="window.location.href='/export/json/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📦 Export Team JSON ZIP</button>
     `;
   }
 
@@ -867,8 +819,7 @@ function renderTeam(data, season) {
         </div>
         <div class="accordion-body">
           <div class="accordion-export">
-            <button class="btn btn-sm" onclick="copyTeamPlayerJson(${idx})">📋 Copy JSON</button>
-            <button class="btn btn-sm" onclick="window.location.href='/export/csv/${encodedName}?season=${season}'">📥 CSV</button>
+            <button class="btn btn-sm" onclick="window.location.href='/export/2k/${encodedName}?season=${season}'">📥 2K JSON</button>
             <button class="btn btn-sm" onclick="window.location.href='/export/excel/${encodedName}?season=${season}'">📥 Excel</button>
           </div>
           <div class="playstyles-block">
@@ -914,26 +865,6 @@ function buildTendencyRowsHtml(enriched) {
 function toggleAccordion(idx) {
   const item = document.getElementById(`acc-${idx}`);
   item.classList.toggle("open");
-}
-
-function copyTeamPlayerJson(idx) {
-  if (!window._teamData) return;
-  const player = window._teamData.players[idx];
-  if (!player) return;
-  const tendencies = {};
-  for (const [key, entry] of Object.entries(player.tendencies)) {
-    tendencies[key] = {
-      value: entry.value,
-      label: entry.label,
-      offset: entry.offset,
-      type: entry.type,
-      bit_offset: entry.bit_offset,
-      bit_length: entry.bit_length,
-      length: entry.length,
-    };
-  }
-  const json = JSON.stringify({ tendencies }, null, 2);
-  navigator.clipboard.writeText(json).catch(() => {});
 }
 
 async function loadCurrentUser() {
