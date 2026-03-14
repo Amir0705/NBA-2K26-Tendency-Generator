@@ -15,6 +15,38 @@ _ATTRIBUTE_ALIASES = {
     "mid_range_shot": "Mid Range",
     "three_point_shot": "Three Point",
     "ball_handle": "Ball Control",
+    # Template uses "Passing …" while calculator labels use "Pass …"
+    "pass_accuracy": "Passing Accuracy",
+    "pass_iq": "Passing IQ",
+    "pass_vision": "Passing Vision",
+    "pass_perception": "Passing Perception",
+}
+
+# Maps normalized 2K template tendency key → canonical_name for keys whose
+# template name differs from the registry's primjer_label.
+_TENDENCY_KEY_TO_CANON: dict[str, str] = {
+    "blocktendency":            "block_shot",
+    "contestedjumpermid":       "contested_jumper_mid_range",
+    "dribblebehindtheback":     "driving_behind_the_back",
+    "dribblecrossover":         "driving_crossover",
+    "dribbledoublecrossover":   "driving_double_crossover",
+    "dribblehalfspin":          "driving_half_spin",
+    "dribblespin":              "driving_spin",
+    "dribblestepback":          "driving_step_back",
+    "drivepullupmid":           "drive_pull_up_mid_range",
+    "drivingdunktendency":      "driving_dunk",
+    "drivinglayuptendency":     "driving_layup",
+    "nosetupdribblemove":       "no_setup_dribble",
+    "offscreenshotmid":         "off_screen_shot_mid_range",
+    "postshoot":                "shoot_from_post",
+    "putbackdunk":              "putback",
+    "shotmid":                  "shot_mid_range",
+    "shottendency":             "shot",
+    "spotupshotmid":            "spot_up_shot_mid_range",
+    "standingdunktendency":     "standing_dunk",
+    "stealtendency":            "on_ball_steal",
+    "stepbackjumpermid":        "stepback_jumper_mid_range",
+    "stepthrough":              "step_through_shot",
 }
 
 
@@ -61,6 +93,7 @@ def _replace_tendencies(
     registry: list[dict[str, Any]],
 ) -> None:
     label_to_value: dict[str, int] = {}
+    canon_to_value: dict[str, int] = {}
     for row in registry:
         canonical = str(row.get("canonical_name", ""))
         label = str(row.get("primjer_label", ""))
@@ -69,7 +102,9 @@ def _replace_tendencies(
         value = tendencies.get(canonical)
         if value is None:
             continue
-        label_to_value[_normalize_key(label)] = int(max(0, min(100, value)))
+        clamped = int(max(0, min(100, value)))
+        label_to_value[_normalize_key(label)] = clamped
+        canon_to_value[canonical] = clamped
 
     categories = payload.get("categories", {})
     if not isinstance(categories, dict):
@@ -82,6 +117,10 @@ def _replace_tendencies(
         norm = _normalize_key(key)
         if norm in label_to_value:
             target[key] = label_to_value[norm]
+        elif norm in _TENDENCY_KEY_TO_CANON:
+            canon = _TENDENCY_KEY_TO_CANON[norm]
+            if canon in canon_to_value:
+                target[key] = canon_to_value[canon]
 
 
 def _replace_attributes(payload: dict[str, Any], attributes: dict[str, int]) -> None:
