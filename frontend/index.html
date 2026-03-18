@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NBA 2K26 ATD Committee Helper Tool</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260315b" />
 </head>
 <body>
   <header>
@@ -48,8 +48,6 @@
           <label for="seasonSelect">Season</label>
           <select id="seasonSelect" class="input select">
             <option value="2024-25">2024-25</option>
-            <option value="2023-24">2023-24</option>
-            <option value="2022-23">2022-23</option>
           </select>
         </div>
       </div>
@@ -91,7 +89,19 @@
           <option value="TOR">Toronto Raptors (TOR)</option>
           <option value="UTA">Utah Jazz (UTA)</option>
           <option value="WAS">Washington Wizards (WAS)</option>
+          <option value="CHH">Charlotte Hornets - Historical (CHH)</option>
+          <option value="NJN">New Jersey Nets - Historical (NJN)</option>
+          <option value="NOH">New Orleans Hornets - Historical (NOH)</option>
+          <option value="NOK">New Orleans/Oklahoma City - Historical (NOK)</option>
+          <option value="SEA">Seattle SuperSonics - Historical (SEA)</option>
+          <option value="VAN">Vancouver Grizzlies - Historical (VAN)</option>
         </select>
+        <div class="season-wrap">
+          <label for="teamSeasonSelect">Season</label>
+          <select id="teamSeasonSelect" class="input select">
+            <option value="2025-26">2025-26</option>
+          </select>
+        </div>
         <button id="generateTeamBtn" class="btn btn-primary">Generate Team</button>
       </div>
     </section>
@@ -105,6 +115,7 @@
         <div class="player-info">
           <span id="playerName" class="player-name"></span>
           <span id="playerMeta" class="player-meta"></span>
+          <span id="dataModeBadge" class="meta-badge" hidden></span>
           <span id="guardrailBadge" class="meta-badge" hidden></span>
           <span id="errorBadge" class="meta-badge error" hidden></span>
         </div>
@@ -165,6 +176,6 @@
     <p>NBA 2K26 ATD Committee Helper Tool · Powered by nba_api</p>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260315b"></script>
 </body>
 </html>

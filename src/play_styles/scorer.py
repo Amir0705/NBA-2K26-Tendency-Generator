@@ -60,6 +60,15 @@ class PlayStyleScorer:
         fg3a_pg = self._to_float(features.get("fg3a_per_game", 0.0))
         fg3_pct = self._to_float(features.get("fg3_pct", 0.0))
         fg3a_rate = self._to_float(features.get("fg3a_rate", 0.0))
+        pull_up_three_rate = self._to_float(features.get("pull_up_three_rate", 0.0))
+        catch_and_shoot_three_rate = self._to_float(features.get("catch_and_shoot_three_rate", 0.0))
+        unassisted_two_rate = self._to_float(features.get("unassisted_two_rate", 0.0))
+        assisted_2pt_pct = self._to_float(features.get("assisted_2pt_pct", 50.0))
+        assisted_3pt_pct = self._to_float(features.get("assisted_3pt_pct", 75.0))
+        seconds_per_poss_off = self._to_float(features.get("seconds_per_poss_off", 14.0))
+        live_ball_turnover_pct = self._to_float(features.get("live_ball_turnover_pct", 12.0))
+        second_chance_off_poss_rate = self._to_float(features.get("second_chance_off_poss_rate", 0.08))
+        pbp_data_available = self._to_float(features.get("pbp_data_available", 0.0)) > 0.0
         height_inches = self._to_float(features.get("height_inches", 78.0))
         weight_lbs = self._to_float(features.get("weight_lbs", 220.0))
 
@@ -72,7 +81,7 @@ class PlayStyleScorer:
         )
         rim_pressure = ra_rate + paint_rate
 
-        assists = self._to_float(features.get("assists", ast_pg))
+        assists = ast_pg
 
         is_guard = 1.0 if position in {"PG", "SG"} else 0.0
         is_wing = 1.0 if position in {"SG", "SF"} else 0.0
@@ -91,6 +100,12 @@ class PlayStyleScorer:
             0.55 * self._norm(assists, 3.0, 10.0)
             + 0.45 * self._norm(usage_rate, 22.0, 35.0)
         )
+        if pbp_data_available:
+            creator_proxy = (
+                0.40 * self._norm(assists, 3.0, 10.0)
+                + 0.30 * self._norm(usage_rate, 22.0, 35.0)
+                + 0.30 * self._norm(unassisted_two_rate, 0.05, 0.24)
+            )
         creator_proxy = max(0.0, min(1.0, creator_proxy))
 
         iso_fallback = max(
@@ -225,16 +240,34 @@ class PlayStyleScorer:
             + 0.35 * self._norm(usage_rate, 22.0, 35.0)
             + 0.20 * self._norm(rim_pressure, 0.22, 0.62)
         )
+        if pbp_data_available:
+            creator_load = (
+                0.35 * self._norm(assists, 3.0, 10.0)
+                + 0.30 * self._norm(usage_rate, 22.0, 35.0)
+                + 0.20 * self._norm(unassisted_two_rate, 0.05, 0.24)
+                + 0.15 * self._norm(100.0 - assisted_2pt_pct, 20.0, 65.0)
+            )
         creator_load = max(0.0, min(1.0, creator_load))
         off_ball_profile = (
             0.55 * self._norm(fg3a_rate, 0.20, 0.60)
             + 0.45 * self._norm(cuts, 0.4, 3.8)
         )
+        if pbp_data_available:
+            off_ball_profile = (
+                0.45 * self._norm(catch_and_shoot_three_rate, 0.04, 0.28)
+                + 0.35 * self._norm(cuts, 0.4, 3.8)
+                + 0.20 * self._norm(assisted_3pt_pct, 55.0, 90.0)
+            )
         off_ball_profile = max(0.0, min(1.0, off_ball_profile))
         movement_shooter = (
             0.70 * self._norm(fg3a_rate, 0.35, 0.70)
             + 0.30 * self._norm(fg3a_pg, 5.0, 12.0)
         ) * (1.0 - 0.55 * self._norm(rim_pressure, 0.35, 0.75))
+        if pbp_data_available:
+            movement_shooter = (
+                0.60 * self._norm(catch_and_shoot_three_rate + pull_up_three_rate, 0.10, 0.42)
+                + 0.40 * self._norm(pull_up_three_rate, 0.03, 0.22)
+            ) * (1.0 - 0.50 * self._norm(rim_pressure, 0.35, 0.75))
         movement_shooter = max(0.0, min(1.0, movement_shooter))
         if off_screen_pos > 0.3:
             movement_shooter = min(1.0, movement_shooter + 0.12 * self._norm(off_screen_pos, 0.5, 4.0))
@@ -260,6 +293,8 @@ class PlayStyleScorer:
                 + 20.0 * self._norm(usage_rate, 17.0, 33.0)
                 + 8.0 * self._norm(fga_pg, 10.0, 24.0)
                 + 10.0 * self._norm(mid_fg_pct, 0.36, 0.52)
+                + 8.0 * self._norm(unassisted_two_rate, 0.05, 0.24)
+                - 8.0 * self._norm(catch_and_shoot_three_rate, 0.06, 0.28)
             ),
             "Handoff pass": self._score(
                 42.0 * self._norm(handoff_pos, 0.4, 5.0)
@@ -284,6 +319,7 @@ class PlayStyleScorer:
                 + 12.0 * max(0.0, 1.0 - creator_load)
                     * max(0.0, 1.0 - self._norm(usage_rate, 16.0, 28.0))
                 - 10.0 * creator_load
+                + 8.0 * self._norm(second_chance_off_poss_rate, 0.04, 0.18)
             ),
             "Guard post up": self._score(
                 52.0 * self._norm(post_pos, 0.8, 4.5)
@@ -351,9 +387,21 @@ class PlayStyleScorer:
                 70.0 * self._norm(iso_pos, 0.4, 7.0)
                 + 30.0 * self._norm(usage_rate, 20.0, 35.0)
                 + 10.0 * creator_load
+                + 10.0 * self._norm(unassisted_two_rate, 0.05, 0.24)
                 - 6.0 * movement_shooter
+                - 8.0 * self._norm(live_ball_turnover_pct, 9.0, 18.0)
             ),
         }
+
+        # Pace context from PBP: slower half-court players lean into creator/post
+        # styles, while very fast possessions lean into off-ball activity.
+        if pbp_data_available:
+            slow_pace = self._norm(seconds_per_poss_off, 12.2, 16.2)
+            scores["Isolation"] *= 1.0 + 0.06 * slow_pace
+            scores["Isolation point"] *= 1.0 + 0.05 * slow_pace
+            scores["Post up high"] *= 1.0 + 0.04 * slow_pace
+            scores["Post up low"] *= 1.0 + 0.04 * slow_pace
+            scores["Cutter"] *= 1.0 + 0.05 * self._norm(16.0 - seconds_per_poss_off, 0.0, 4.0)
 
         # Position-aware penalties to avoid unrealistic priorities.
         if is_center > 0:
@@ -471,7 +519,7 @@ class PlayStyleScorer:
         shot_three = t.get("shot_three", 0)
         spot_three = t.get("spot_up_shot_three", 0)
         shot_mid = t.get("shot_mid_range", 0)
-        iso_t = t.get("iso_vs_team", 50)
+        iso_t = t.get("iso_vs_average_defender", t.get("iso_vs_poor_defender", 50))
         dish = t.get("dish_to_open_man", 0)
         shot_close = t.get("shot_close", 0)
         drv_layup = t.get("driving_layup", 0)
@@ -550,13 +598,25 @@ class PlayStyleScorer:
         return {name: rounded[i] for i, name in enumerate(priorities)}
 
     def _resolve_usage_rate(self, features: dict[str, Any]) -> float:
-        if "usage_rate" in features:
-            return self._to_float(features["usage_rate"])
-        if "usage_rate_pct" in features:
-            return self._to_float(features["usage_rate_pct"])
-        if "usg_pct" in features:
-            return self._to_float(features["usg_pct"])
-        return self._to_float(features.get("usg_pct_proxy", 0.18)) * 100.0
+        # Legacy rows can include usage keys with placeholder 0.0 values.
+        # Prefer the first positive usage field, then fall back to proxy usage.
+        for key in ("usage_rate", "usage_rate_pct", "usg_pct"):
+            if key not in features:
+                continue
+            value = self._to_float(features.get(key))
+            if value <= 0.0:
+                continue
+            # Some feeds store usage as a fraction (0-1) instead of percent.
+            if value <= 1.0:
+                return value * 100.0
+            return value
+
+        proxy = self._to_float(features.get("usg_pct_proxy", 0.18))
+        if proxy <= 0.0:
+            return 18.0
+        if proxy <= 1.0:
+            return proxy * 100.0
+        return proxy
 
     @staticmethod
     def _target_count_from_usage(usage_rate: float) -> int:

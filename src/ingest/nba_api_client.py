@@ -1,11 +1,54 @@
-"""NBA Stats API client using the nba_api library."""
+"""PBP-backed ingest client keeping legacy method names for compatibility."""
 from __future__ import annotations
 
-import time
+import os
 import unicodedata
 from typing import Any
 
 from src.ingest.cache import Cache
+from src.ingest.pbpstats_client import PBPStatsClient
+from src.seasons import data_mode_for_season
+from src.warehouse.reader import WarehouseReader
+
+
+_TEAM_ID_BY_ABBR: dict[str, int] = {
+    "ATL": 1610612737,
+    "BOS": 1610612738,
+    "BKN": 1610612751,
+    "CHA": 1610612766,
+    "CHH": 1610612766,
+    "CHI": 1610612741,
+    "CLE": 1610612739,
+    "DAL": 1610612742,
+    "DEN": 1610612743,
+    "DET": 1610612765,
+    "GSW": 1610612744,
+    "HOU": 1610612745,
+    "IND": 1610612754,
+    "LAC": 1610612746,
+    "LAL": 1610612747,
+    "MEM": 1610612763,
+    "VAN": 1610612763,
+    "MIA": 1610612748,
+    "MIL": 1610612749,
+    "MIN": 1610612750,
+    "NOP": 1610612740,
+    "NOH": 1610612740,
+    "NOK": 1610612740,
+    "NYK": 1610612752,
+    "OKC": 1610612760,
+    "SEA": 1610612760,
+    "ORL": 1610612753,
+    "PHI": 1610612755,
+    "PHX": 1610612756,
+    "POR": 1610612757,
+    "SAC": 1610612758,
+    "SAS": 1610612759,
+    "TOR": 1610612761,
+    "UTA": 1610612762,
+    "WAS": 1610612764,
+    "NJN": 1610612751,
+}
 
 
 def _strip_accents(s: str) -> str:
@@ -15,242 +58,307 @@ def _strip_accents(s: str) -> str:
     )
 
 
-def _parse_response(endpoint_obj: Any, result_set_index: int = 0) -> list[dict]:
-    """Convert an nba_api endpoint result set into a list of dicts."""
-    result_set = endpoint_obj.get_dict()["resultSets"][result_set_index]
-    headers = result_set["headers"]
-    rows = result_set["rowSet"]
-    return [dict(zip(headers, row)) for row in rows]
-
-
 class NBAApiClient:
-    """Fetches live player stats from the nba_api library."""
-
-    _RATE_LIMIT_SECONDS = 0.6
+    """PBP-only ingest adapter preserving existing interface."""
 
     def __init__(self, cache_dir: str | None = None) -> None:
-        """
-        Initialise the client.
-
-        Parameters
-        ----------
-        cache_dir: Optional directory path for response caching.
-        """
         self._cache: Cache | None = Cache(cache_dir) if cache_dir else None
-        self._last_request_time: float = 0.0
+        self._pbp = PBPStatsClient(cache=self._cache)
+        self._use_nba_bio = (os.environ.get("N2K_USE_NBA_BIO", "1").strip() == "1")
+        self._use_warehouse = (os.environ.get("N2K_USE_WAREHOUSE", "1").strip() == "1")
+        self._warehouse = WarehouseReader() if self._use_warehouse else None
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    @staticmethod
+    def _inches_to_height_str(height_in: Any) -> str:
+        """Convert numeric inches to nba_api-like '6-7' string."""
+        try:
+            total_inches = int(round(float(height_in)))
+        except (TypeError, ValueError):
+            return ""
+        if total_inches <= 0:
+            return ""
+        feet, inches = divmod(total_inches, 12)
+        return f"{feet}-{inches}"
+
+    def _warehouse_available(self) -> bool:
+        return self._warehouse is not None and self._warehouse.available()
 
     def search_player(self, name: str) -> list[dict[str, Any]]:
-        """Search for players by name; returns list of matching records."""
-        all_players = self._get_all_players()
-        name_lower = _strip_accents(name.lower())
-        results = []
-        for p in all_players:
-            full_name = (p.get("DISPLAY_FIRST_LAST") or "")
-            if name_lower in _strip_accents(full_name.lower()):
-                results.append(
-                    {
-                        "player_id": p["PERSON_ID"],
-                        "full_name": full_name,
-                        "team": p.get("TEAM_ABBREVIATION", ""),
-                        "is_active": bool(p.get("ROSTERSTATUS", 0)),
-                    }
-                )
-        return results
+        """Search players by name through PBP all-player mapping."""
+        return self._pbp.search_player(name)
 
     def get_player_info(self, player_id: int) -> dict[str, Any]:
-        """Return basic info for *player_id* (position, height, weight, team)."""
-        cache_key = f"player_info:{player_id}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        """Return player bio info, preferring live NBA profile when available."""
+        if self._warehouse_available():
+            w_info = self._warehouse.get_player_info(int(player_id))
+            if w_info:
+                team_id = 0
+                team_abbr = ""
+                if data_mode_for_season("2024-25") == "pbp":
+                    profile = self.get_pbp_player_profile(player_id)
+                    team_id = int(profile.get("team_id", 0) or 0)
+                    team_abbr = str(profile.get("team_abbreviation", "") or "")
+                return {
+                    "position": str(w_info.get("position", "") or ""),
+                    "height": self._inches_to_height_str(w_info.get("height_in")),
+                    "weight": str(w_info.get("weight_lbs", "") or ""),
+                    "team_id": team_id,
+                    "team_abbreviation": team_abbr,
+                    "birthdate": str(w_info.get("birthdate", "") or ""),
+                }
 
-        from nba_api.stats.endpoints import CommonPlayerInfo  # noqa: PLC0415
+        profile = self.get_pbp_player_profile(player_id)
+        bio = self._get_nba_bio(player_id)
 
-        def _call() -> Any:
-            self._rate_limit()
-            return CommonPlayerInfo(player_id=player_id, timeout=10)
+        position = str(bio.get("position", "") or "")
+        if "/" in position:
+            position = position.split("/")[0].strip()
 
-        endpoint = self._with_retry(_call, endpoint_name="CommonPlayerInfo")
-        rows = _parse_response(endpoint, 0)
-        if not rows:
-            return {}
-        row = rows[0]
-        result = {
-            "position": row.get("POSITION", ""),
-            "height": row.get("HEIGHT", ""),
-            "weight": row.get("WEIGHT", ""),
-            "team_id": row.get("TEAM_ID"),
-            "team_abbreviation": row.get("TEAM_ABBREVIATION", ""),
-            "birthdate": row.get("BIRTHDATE", ""),
+        height = str(bio.get("height", "") or "")
+        weight = str(bio.get("weight", "") or "")
+        birthdate = str(bio.get("birthdate", "") or "")
+
+        return {
+            "position": position,
+            "height": height,
+            "weight": weight,
+            "team_id": profile.get("team_id", 0),
+            "team_abbreviation": profile.get("team_abbreviation", ""),
+            "birthdate": birthdate,
         }
-        self._cache_set(cache_key, result)
-        return result
+
+    def _get_nba_bio(self, player_id: int) -> dict[str, Any]:
+        """Fetch basic player bio from nba_api CommonPlayerInfo with cache/fallback."""
+        if not self._use_nba_bio:
+            return {}
+
+        cache_key = f"nba:bio:{int(player_id)}"
+        if self._cache is not None:
+            cached = self._cache.get(cache_key)
+            if isinstance(cached, dict):
+                return cached
+
+        try:
+            from nba_api.stats.endpoints import commonplayerinfo
+
+            endpoint = commonplayerinfo.CommonPlayerInfo(player_id=int(player_id), timeout=15)
+            rows = endpoint.get_normalized_dict().get("CommonPlayerInfo", [])
+            row = rows[0] if rows else {}
+            if not isinstance(row, dict):
+                row = {}
+
+            bio = {
+                "position": str(row.get("POSITION", "") or ""),
+                "height": str(row.get("HEIGHT", "") or ""),
+                "weight": str(row.get("WEIGHT", "") or ""),
+                "birthdate": str(row.get("BIRTHDATE", "") or ""),
+            }
+            if self._cache is not None:
+                self._cache.set(cache_key, bio, ttl_seconds=1209600)
+            return bio
+        except Exception:  # noqa: BLE001
+            return {}
 
     def get_player_stats(
         self, player_id: int, season: str = "2024-25"
     ) -> dict[str, Any]:
-        """
-        Retrieve per-game stats for *player_id*.
+        """Return per-game style player stats from season-appropriate source."""
+        if self._warehouse_available():
+            w_stats = self._warehouse.get_player_stats(int(player_id), str(season))
+            if w_stats:
+                usg_pct = float(w_stats.get("usg_pct") or 0.0)
+                return {
+                    "gp": int(w_stats.get("gp") or 0),
+                    "min": float(w_stats.get("min_pg") or 0.0),
+                    "pts": float(w_stats.get("pts_pg") or 0.0),
+                    "fga": float(w_stats.get("fga_pg") or 0.0),
+                    "fgm": float(w_stats.get("fgm_pg") or 0.0),
+                    "fg_pct": float(w_stats.get("fg_pct") or 0.0),
+                    "fg3a": float(w_stats.get("fg3a_pg") or 0.0),
+                    "fg3m": float(w_stats.get("fg3m_pg") or 0.0),
+                    "fg3_pct": float(w_stats.get("fg3_pct") or 0.0),
+                    "fta": float(w_stats.get("fta_pg") or 0.0),
+                    "ftm": float(w_stats.get("ftm_pg") or 0.0),
+                    "ft_pct": float(w_stats.get("ft_pct") or 0.0),
+                    "oreb": float(w_stats.get("oreb_pg") or 0.0),
+                    "dreb": float(w_stats.get("dreb_pg") or 0.0),
+                    "reb": float(w_stats.get("reb_pg") or 0.0),
+                    "ast": float(w_stats.get("ast_pg") or 0.0),
+                    "stl": float(w_stats.get("stl_pg") or 0.0),
+                    "blk": float(w_stats.get("blk_pg") or 0.0),
+                    "tov": float(w_stats.get("tov_pg") or 0.0),
+                    "pf": float(w_stats.get("pf_pg") or 0.0),
+                    "plus_minus": 0.0,
+                    "usage_rate": (usg_pct * 100.0 if usg_pct <= 1.0 else usg_pct),
+                }
 
-        Returns a flat dict with stat keys.
-        """
-        cache_key = f"player_stats:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        if data_mode_for_season(season) == "legacy":
+            return self._get_legacy_player_stats(player_id=player_id, season=season)
 
-        from nba_api.stats.endpoints import PlayerDashboardByGeneralSplits  # noqa: PLC0415
-
-        def _call() -> Any:
-            self._rate_limit()
-            return PlayerDashboardByGeneralSplits(
-                player_id=player_id,
-                season=season,
-                per_mode_detailed="PerGame",
-                timeout=10,
-            )
-
-        try:
-            endpoint = self._with_retry(_call, endpoint_name="PlayerDashboardByGeneralSplits")
-            rows = _parse_response(endpoint, 0)
-        except Exception:  # noqa: BLE001
-            # Fallback: use PlayerCareerStats for players whose dashboard
-            # endpoint returns empty/broken responses (e.g. mid-season trades).
-            rows = self._career_stats_fallback(player_id, season)
-        if not rows:
-            return {}
-        row = rows[0]
-        result = {
-            "gp": row.get("GP", 0),
-            "min": row.get("MIN", 0.0),
-            "pts": row.get("PTS", 0.0),
-            "fga": row.get("FGA", 0.0),
-            "fgm": row.get("FGM", 0.0),
-            "fg_pct": row.get("FG_PCT", 0.0),
-            "fg3a": row.get("FG3A", 0.0),
-            "fg3m": row.get("FG3M", 0.0),
-            "fg3_pct": row.get("FG3_PCT", 0.0),
-            "fta": row.get("FTA", 0.0),
-            "ftm": row.get("FTM", 0.0),
-            "ft_pct": row.get("FT_PCT", 0.0),
-            "oreb": row.get("OREB", 0.0),
-            "dreb": row.get("DREB", 0.0),
-            "reb": row.get("REB", 0.0),
-            "ast": row.get("AST", 0.0),
-            "stl": row.get("STL", 0.0),
-            "blk": row.get("BLK", 0.0),
-            "tov": row.get("TOV", 0.0),
-            "pf": row.get("PF", 0.0),
-            "plus_minus": row.get("PLUS_MINUS", 0.0),
+        profile = self.get_pbp_player_profile(player_id, season=season)
+        return {
+            "gp": profile.get("gp", 0),
+            "min": profile.get("min", 0.0),
+            "pts": profile.get("pts", 0.0),
+            "fga": profile.get("fga", 0.0),
+            "fgm": profile.get("fgm", 0.0),
+            "fg_pct": profile.get("fg_pct", 0.0),
+            "fg3a": profile.get("fg3a", 0.0),
+            "fg3m": profile.get("fg3m", 0.0),
+            "fg3_pct": profile.get("fg3_pct", 0.0),
+            "fta": profile.get("fta", 0.0),
+            "ftm": profile.get("ftm", 0.0),
+            "ft_pct": profile.get("ft_pct", 0.0),
+            "oreb": profile.get("oreb", 0.0),
+            "dreb": profile.get("dreb", 0.0),
+            "reb": profile.get("reb", 0.0),
+            "ast": profile.get("ast", 0.0),
+            "stl": profile.get("stl", 0.0),
+            "blk": profile.get("blk", 0.0),
+            "tov": profile.get("tov", 0.0),
+            "pf": profile.get("pf", 0.0),
+            "plus_minus": 0.0,
+            "usage_rate": profile.get("pbp_usage_rate", 0.0),
         }
-        self._cache_set(cache_key, result)
-        return result
 
     def get_shot_chart(
         self, player_id: int, season: str = "2024-25"
     ) -> list[dict[str, Any]]:
-        """Return raw shot-chart rows for the given player and season."""
-        cache_key = f"shot_chart:{player_id}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        """Compatibility stub: shot-chart is not required in PBP-only mode."""
+        _ = player_id
+        _ = season
+        return []
 
-        from nba_api.stats.endpoints import ShotChartDetail  # noqa: PLC0415
+    def get_player_shots(
+        self,
+        player_id: int,
+        season: str = "2024-25",
+        season_type: str = "Regular Season",
+    ) -> list[dict[str, Any]]:
+        """Return PBP shot-event rows for a player season."""
+        if data_mode_for_season(season) == "legacy":
+            return []
 
-        def _call() -> Any:
-            self._rate_limit()
-            return ShotChartDetail(
-                player_id=player_id,
-                team_id=0,
-                season_nullable=season,
-                context_measure_simple="FGA",
-                timeout=10,
-            )
+        if self._warehouse_available():
+            w_rows = self._warehouse.get_player_shots(int(player_id), str(season))
+            if w_rows:
+                return w_rows
 
-        endpoint = self._with_retry(_call, endpoint_name="ShotChartDetail")
-        rows = _parse_response(endpoint, 0)
-        result = [
-            {
-                "shot_zone_basic": r.get("SHOT_ZONE_BASIC", ""),
-                "shot_zone_area": r.get("SHOT_ZONE_AREA", ""),
-                "shot_zone_range": r.get("SHOT_ZONE_RANGE", ""),
-                "shot_made_flag": r.get("SHOT_MADE_FLAG", 0),
-                "loc_x": r.get("LOC_X", 0),
-                "loc_y": r.get("LOC_Y", 0),
-                "shot_type": r.get("SHOT_TYPE", ""),
-                "action_type": r.get("ACTION_TYPE", ""),
-            }
-            for r in rows
-        ]
-        self._cache_set(cache_key, result)
-        return result
+        return self._pbp.get_player_shots(
+            player_id=player_id,
+            season=season,
+            season_type=season_type,
+        )
 
     def get_team_roster(
         self, team_abbreviation: str, season: str = "2024-25"
     ) -> list[dict[str, Any]]:
-        """Get all players on a team roster.
+        """Return team roster using source appropriate for requested season."""
+        if self._warehouse_available():
+            w_rows = self._warehouse.get_team_roster(str(team_abbreviation), str(season))
+            if w_rows:
+                return [
+                    {
+                        "player_id": int(r.get("player_id") or 0),
+                        "full_name": str(r.get("full_name") or ""),
+                        "position": str(r.get("position") or ""),
+                    }
+                    for r in w_rows
+                    if int(r.get("player_id") or 0) > 0
+                ]
 
-        Returns list of {player_id, full_name, position}.
-        """
-        cache_key = f"team_roster:{team_abbreviation}:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        if data_mode_for_season(season) == "legacy":
+            return self._get_legacy_team_roster(team_abbreviation=team_abbreviation, season=season)
 
-        from nba_api.stats.static import teams as nba_teams  # noqa: PLC0415
-
-        team_list = nba_teams.get_teams()
-        team_info = next(
-            (t for t in team_list if t["abbreviation"].upper() == team_abbreviation.upper()),
-            None,
-        )
-        if team_info is None:
+        teams = self._pbp.get_teams("nba")
+        abbr = (team_abbreviation or "").strip().upper()
+        team_id = 0
+        for row in teams:
+            text = str(row.get("text", "") or "").strip().upper()
+            if text == abbr:
+                try:
+                    team_id = int(row.get("id") or 0)
+                except (TypeError, ValueError):
+                    team_id = 0
+                break
+        if team_id <= 0:
             return []
 
-        from nba_api.stats.endpoints import CommonTeamRoster  # noqa: PLC0415
-
-        def _call() -> Any:
-            self._rate_limit()
-            return CommonTeamRoster(team_id=team_info["id"], season=season)
-
-        endpoint = self._with_retry(_call, endpoint_name="CommonTeamRoster")
-        rows = _parse_response(endpoint, 0)
-        result = [
-            {
-                "player_id": int(r.get("PlayerID") or r.get("PLAYER_ID", 0)),
-                "full_name": r.get("PLAYER", r.get("DISPLAY_FIRST_LAST", "")),
-                "position": r.get("POSITION", ""),
-            }
-            for r in rows
-        ]
-        self._cache_set(cache_key, result)
-        return result
-
-    def get_league_averages(self, season: str = "2024-25") -> dict[str, Any]:
-        """Return league-wide per-game averages for percentile calculations."""
-        cache_key = f"league_averages:{season}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        from nba_api.stats.endpoints import LeagueDashPlayerStats  # noqa: PLC0415
-
-        def _call() -> Any:
-            self._rate_limit()
-            return LeagueDashPlayerStats(
-                season=season,
-                per_mode_detailed="PerGame",
-                timeout=10,
+        mapping = self._pbp.get_team_players_for_season(
+            team_id=team_id,
+            season=season,
+            season_type="Regular Season",
+        )
+        out: list[dict[str, Any]] = []
+        for pid_raw, full_name in mapping.items():
+            try:
+                pid = int(pid_raw)
+            except (TypeError, ValueError):
+                continue
+            out.append(
+                {
+                    "player_id": pid,
+                    "full_name": str(full_name or ""),
+                    "position": "",
+                }
             )
+        return out
 
-        endpoint = self._with_retry(_call, endpoint_name="LeagueDashPlayerStats")
-        rows = _parse_response(endpoint, 0)
-        self._cache_set(cache_key, rows, ttl_seconds=604800)  # 1 week
-        return rows  # type: ignore[return-value]
+    def get_league_averages(self, season: str = "2024-25") -> list[dict[str, Any]]:
+        """Return pseudo league rows for percentile computations."""
+        if self._warehouse_available():
+            rows = self._warehouse.get_all_player_stats_for_season(str(season))
+            if rows:
+                return [
+                    {
+                        "PTS": float(r.get("pts_pg") or 0.0),
+                        "AST": float(r.get("ast_pg") or 0.0),
+                        "REB": float(r.get("reb_pg") or 0.0),
+                        "STL": float(r.get("stl_pg") or 0.0),
+                        "BLK": float(r.get("blk_pg") or 0.0),
+                        "TOV": float(r.get("tov_pg") or 0.0),
+                        "FGA": float(r.get("fga_pg") or 0.0),
+                        "FG3A": float(r.get("fg3a_pg") or 0.0),
+                        "FTA": float(r.get("fta_pg") or 0.0),
+                    }
+                    for r in rows
+                ]
+
+        if data_mode_for_season(season) == "legacy":
+            return self._get_legacy_league_rows(season=season)
+
+        rows = self._pbp.get_player_totals_table(season=season, season_type="Regular Season")
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                gp = float(row.get("GamesPlayed") or 0.0)
+            except (TypeError, ValueError):
+                gp = 0.0
+            gp = max(gp, 1.0)
+
+            def _num(key: str) -> float:
+                try:
+                    return float(row.get(key) or 0.0)
+                except (TypeError, ValueError):
+                    return 0.0
+
+            fga_pg = _num("FG2A") + _num("FG3A")
+            fg3a_pg = _num("FG3A") / gp
+            fta_pg = _num("FTA") / gp
+            out.append(
+                {
+                    "PTS": _num("Points") / gp,
+                    "AST": _num("Assists") / gp,
+                    "REB": _num("Rebounds") / gp,
+                    "STL": _num("Steals") / gp,
+                    "BLK": _num("Blocks") / gp,
+                    "TOV": (_num("LiveBallTurnovers") + _num("DeadBallTurnovers")) / gp,
+                    "FGA": fga_pg,
+                    "FG3A": fg3a_pg,
+                    "FTA": fta_pg,
+                }
+            )
+        return out
 
     def get_player_playtypes(
         self,
@@ -258,192 +366,245 @@ class NBAApiClient:
         season: str = "2024-25",
         season_type: str = "Regular Season",
     ) -> dict[str, float]:
-        """Return normalized offensive Synergy play-type possessions for a player.
+        """Derive playtype-like signals from PBP profile for compatibility."""
+        _ = season_type
+        if data_mode_for_season(season) == "legacy":
+            return {}
 
-        Output keys:
-        - isolation_possessions
-        - pick_and_roll_ball_handler_possessions
-        - pick_and_roll_rollman_possessions
-        - post_up_possessions
-        - cuts
-        - handoff_possessions
-        """
-        cache_key = f"player_playtypes:{player_id}:{season}:{season_type}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        profile = self.get_pbp_player_profile(player_id, season=season)
+        gp = max(1.0, float(profile.get("gp", 0.0) or 0.0))
+        off_poss = float(profile.get("off_poss", 0.0) or 0.0)
+        total_poss = float(profile.get("total_poss", 0.0) or 0.0)
+        poss_pg = (off_poss / gp) if off_poss > 0.0 else ((total_poss / gp) * 0.5)
+        usg_pct = float(profile.get("pbp_usage_rate", 0.0) or 0.0)
+        usg = max(0.0, min(1.0, usg_pct / 100.0))
+        rim = max(0.0, min(1.0, float(profile.get("at_rim_frequency", 0.0) or 0.0)))
+        mid = max(
+            0.0,
+            min(
+                1.0,
+                float(profile.get("short_mid_frequency", 0.0) or 0.0)
+                + float(profile.get("long_mid_frequency", 0.0) or 0.0),
+            ),
+        )
+        pull_up = max(0.0, min(1.0, float(profile.get("unassisted_two_rate", 0.0) or 0.0)))
 
-        play_types = {
-            "Isolation": ("isolation_possessions", "isolation_ppp"),
-            "PRBallHandler": ("pick_and_roll_ball_handler_possessions", "pick_and_roll_ball_handler_ppp"),
-            "PRRollman": ("pick_and_roll_rollman_possessions", "pick_and_roll_rollman_ppp"),
-            "Postup": ("post_up_possessions", "post_up_ppp"),
-            "Cut": ("cuts", "cut_ppp"),
-            "Handoff": ("handoff_possessions", "handoff_ppp"),
-            "Spotup": ("spot_up_possessions", "spot_up_ppp"),
-            "OffScreen": ("off_screen_possessions", "off_screen_ppp"),
-            "Transition": ("transition_possessions", "transition_ppp"),
+        reb_p36 = float(profile.get("reb", 0.0) or 0.0) * 36.0 / max(float(profile.get("min", 0.0) or 0.0), 1.0)
+        blk_p36 = float(profile.get("blk", 0.0) or 0.0) * 36.0 / max(float(profile.get("min", 0.0) or 0.0), 1.0)
+        fg3a_rate = float(profile.get("fg3a", 0.0) or 0.0) / max(float(profile.get("fga", 1.0) or 1.0), 1.0)
+        size_big_proxy = max(
+            0.0,
+            min(1.0, 0.55 * ((reb_p36 - 5.0) / 8.0) + 0.25 * ((blk_p36 - 0.2) / 2.1) + 0.20 * ((1.0 - fg3a_rate - 0.35) / 0.55)),
+        )
+        post_fallback = max(
+            0.0,
+            0.2
+            + 2.8 * size_big_proxy
+            + 0.05 * usg_pct
+            - 1.2 * (1.0 - size_big_proxy) * max(0.0, min(1.0, (fg3a_rate - 0.35) / 0.30)),
+        )
+        post_context = poss_pg * max(
+            0.0,
+            min(
+                1.0,
+                0.12 * rim + 0.18 * mid + 0.16 * pull_up + 0.06 * (1.0 - fg3a_rate),
+            ),
+        )
+        post_up_possessions = min(8.0, max(0.0, 0.65 * post_fallback + 0.35 * post_context))
+
+        return {
+            "isolation_possessions": poss_pg * max(0.0, min(1.0, pull_up * 1.6 + usg * 0.20)),
+            "isolation_ppp": float(profile.get("fg_pct", 0.0) or 0.0) * 2.0,
+            "pick_and_roll_ball_handler_possessions": poss_pg * max(0.0, min(1.0, usg * 0.18 + pull_up * 0.20)),
+            "pick_and_roll_ball_handler_ppp": float(profile.get("fg_pct", 0.0) or 0.0) * 2.0,
+            "pick_and_roll_rollman_possessions": poss_pg * max(0.0, min(1.0, rim * 0.35)),
+            "pick_and_roll_rollman_ppp": float(profile.get("at_rim_accuracy", profile.get("fg_pct", 0.0)) or 0.0) * 2.0,
+            "post_up_possessions": post_up_possessions,
+            "post_up_ppp": float(profile.get("fg_pct", 0.0) or 0.0) * 2.0,
+            "cuts": poss_pg * max(0.0, min(1.0, rim * 0.22)),
+            "cut_ppp": float(profile.get("at_rim_accuracy", profile.get("fg_pct", 0.0)) or 0.0) * 2.0,
+            "handoff_possessions": poss_pg * max(0.0, min(1.0, float(profile.get("fg3a", 0.0) or 0.0) / max(float(profile.get("fga", 1.0) or 1.0), 1.0) * 0.18)),
+            "handoff_ppp": float(profile.get("fg3_pct", 0.0) or 0.0) * 3.0,
+            "spot_up_possessions": poss_pg * max(0.0, min(1.0, float(profile.get("catch_and_shoot_three_rate", 0.0) or 0.0) * 1.3)),
+            "spot_up_ppp": float(profile.get("fg3_pct", 0.0) or 0.0) * 3.0,
+            "off_screen_possessions": poss_pg * max(0.0, min(1.0, float(profile.get("fg3a", 0.0) or 0.0) / max(float(profile.get("fga", 1.0) or 1.0), 1.0) * 0.12)),
+            "off_screen_ppp": float(profile.get("fg3_pct", 0.0) or 0.0) * 3.0,
+            "transition_possessions": poss_pg * max(0.0, min(1.0, float(profile.get("second_chance_off_poss_rate", 0.0) or 0.0) + 0.06)),
+            "transition_ppp": float(profile.get("ts_pct", 0.0) or 0.0) * 2.0,
         }
 
-        result: dict[str, float] = {}
-        for poss_key, ppp_key in play_types.values():
-            result[poss_key] = 0.0
-            result[ppp_key] = 0.0
-
-        def _extract(rows: list[dict[str, Any]]) -> tuple[float, float]:
-            match = next(
-                (r for r in rows if int(r.get("PLAYER_ID") or 0) == int(player_id)),
-                None,
-            )
-            if match is None:
-                return 0.0, 0.0
-            try:
-                poss_total = float(match.get("POSS", 0.0) or 0.0)
-                gp = max(1.0, float(match.get("GP", 0.0) or 0.0))
-                ppp = float(match.get("PPP", 0.0) or 0.0)
-                return poss_total / gp, ppp
-            except (TypeError, ValueError):
-                return 0.0, 0.0
-
-        for play_type, (poss_key, ppp_key) in play_types.items():
-            try:
-                rows = self._get_synergy_playtype_rows(
-                    play_type=play_type,
-                    season=season,
-                    season_type=season_type,
-                )
-                poss_pg, ppp = _extract(rows)
-                result[poss_key] = poss_pg
-                result[ppp_key] = ppp
-            except Exception:  # noqa: BLE001
-                result[poss_key] = 0.0
-                result[ppp_key] = 0.0
-
-        self._cache_set(cache_key, result, ttl_seconds=86400)
-        return result
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
-    def _get_all_players(self) -> list[dict]:
-        """Fetch all current-season players, using cache if available."""
-        cache_key = "all_players"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        from nba_api.stats.endpoints import CommonAllPlayers  # noqa: PLC0415
-
-        def _call() -> Any:
-            self._rate_limit()
-            return CommonAllPlayers(is_only_current_season=1, timeout=10)
-
-        endpoint = self._with_retry(_call, endpoint_name="CommonAllPlayers")
-        rows = _parse_response(endpoint, 0)
-        self._cache_set(cache_key, rows, ttl_seconds=86400)
-        return rows
-
-    def _get_synergy_playtype_rows(
+    def get_pbp_player_profile(
         self,
-        play_type: str,
-        season: str,
-        season_type: str,
-    ) -> list[dict[str, Any]]:
-        """Fetch and cache full-player Synergy rows for a specific offensive play type."""
-        cache_key = f"synergy_playtype_table:{play_type}:{season}:{season_type}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+        player_id: int,
+        season: str = "2024-25",
+        season_type: str = "Regular Season",
+    ) -> dict[str, float]:
+        """Return contextual PBP Stats profile for a player."""
+        if data_mode_for_season(season) == "legacy":
+            return {}
 
-        from nba_api.stats.endpoints import SynergyPlayTypes  # noqa: PLC0415
+        if self._warehouse_available():
+            w_profile = self._warehouse.get_pbp_profile(int(player_id), str(season))
+            if w_profile:
+                return {k: v for k, v in w_profile.items() if k not in {"player_id", "season"}}
 
-        def _call() -> Any:
-            self._rate_limit()
-            return SynergyPlayTypes(
-                player_or_team_abbreviation="P",
-                season=season,
-                season_type_all_star=season_type,
-                per_mode_simple="Totals",
-                play_type_nullable=play_type,
-                type_grouping_nullable="offensive",
-                timeout=10,
-            )
+        return self._pbp.get_player_profile(
+            player_id=player_id,
+            season=season,
+            season_type=season_type,
+        )
 
-        endpoint = self._with_retry(_call, endpoint_name=f"SynergyPlayTypes:{play_type}")
-        rows = _parse_response(endpoint, 0)
-        self._cache_set(cache_key, rows, ttl_seconds=86400)
-        return rows
+    def _get_legacy_player_stats(self, player_id: int, season: str) -> dict[str, Any]:
+        """Return per-game historical stats using nba_api player profile endpoints."""
+        cache_key = f"nba:legacy:player_stats:{int(player_id)}:{season}"
+        if self._cache is not None:
+            cached = self._cache.get(cache_key)
+            if isinstance(cached, dict):
+                return cached
 
-    def _rate_limit(self) -> None:
-        """Enforce minimum gap between consecutive API calls."""
-        elapsed = time.time() - self._last_request_time
-        if elapsed < self._RATE_LIMIT_SECONDS:
-            time.sleep(self._RATE_LIMIT_SECONDS - elapsed)
-        self._last_request_time = time.time()
-
-    def _career_stats_fallback(
-        self, player_id: int, season: str
-    ) -> list[dict[str, Any]]:
-        """Use PlayerCareerStats as a fallback when the dashboard endpoint fails."""
-        from nba_api.stats.endpoints import PlayerCareerStats  # noqa: PLC0415
-
-        def _call() -> Any:
-            self._rate_limit()
-            return PlayerCareerStats(
-                player_id=player_id, per_mode36="PerGame", timeout=10
-            )
+        out: dict[str, Any] = {
+            "gp": 0,
+            "min": 0.0,
+            "pts": 0.0,
+            "fga": 0.0,
+            "fgm": 0.0,
+            "fg_pct": 0.0,
+            "fg3a": 0.0,
+            "fg3m": 0.0,
+            "fg3_pct": 0.0,
+            "fta": 0.0,
+            "ftm": 0.0,
+            "ft_pct": 0.0,
+            "oreb": 0.0,
+            "dreb": 0.0,
+            "reb": 0.0,
+            "ast": 0.0,
+            "stl": 0.0,
+            "blk": 0.0,
+            "tov": 0.0,
+            "pf": 0.0,
+            "plus_minus": 0.0,
+            "usage_rate": 0.0,
+        }
 
         try:
-            endpoint = self._with_retry(
-                _call, endpoint_name="PlayerCareerStats"
-            )
+            from nba_api.stats.endpoints import playercareerstats
+
+            endpoint = playercareerstats.PlayerCareerStats(player_id=player_id, per_mode36="PerGame", timeout=20)
+            rows = endpoint.get_normalized_dict().get("SeasonTotalsRegularSeason", [])
+            row = next((r for r in rows if str(r.get("SEASON_ID", "")).endswith(season)), None)
+            if isinstance(row, dict):
+                out.update(
+                    {
+                        "gp": int(row.get("GP") or 0),
+                        "min": float(row.get("MIN") or 0.0),
+                        "pts": float(row.get("PTS") or 0.0),
+                        "fga": float(row.get("FGA") or 0.0),
+                        "fgm": float(row.get("FGM") or 0.0),
+                        "fg_pct": float(row.get("FG_PCT") or 0.0),
+                        "fg3a": float(row.get("FG3A") or 0.0),
+                        "fg3m": float(row.get("FG3M") or 0.0),
+                        "fg3_pct": float(row.get("FG3_PCT") or 0.0),
+                        "fta": float(row.get("FTA") or 0.0),
+                        "ftm": float(row.get("FTM") or 0.0),
+                        "ft_pct": float(row.get("FT_PCT") or 0.0),
+                        "oreb": float(row.get("OREB") or 0.0),
+                        "dreb": float(row.get("DREB") or 0.0),
+                        "reb": float(row.get("REB") or 0.0),
+                        "ast": float(row.get("AST") or 0.0),
+                        "stl": float(row.get("STL") or 0.0),
+                        "blk": float(row.get("BLK") or 0.0),
+                        "tov": float(row.get("TOV") or 0.0),
+                        "pf": float(row.get("PF") or 0.0),
+                    }
+                )
         except Exception:  # noqa: BLE001
-            return []
-        rows = _parse_response(endpoint, 0)
-        if not rows:
-            return []
-        # Prefer the TOT row for the requested season; fall back to
-        # any row for that season, then the most recent season available.
-        season_rows = [
-            r for r in rows if r.get("SEASON_ID") == season
-        ]
-        if season_rows:
-            tot = [r for r in season_rows if r.get("TEAM_ABBREVIATION") == "TOT"]
-            chosen = tot[0] if tot else season_rows[-1]
-        else:
-            chosen = rows[-1]
-        return [chosen]
+            pass
 
-    def _with_retry(
-        self,
-        func: Any,
-        max_retries: int = 2,
-        endpoint_name: str = "NBA API endpoint",
-    ) -> Any:
-        """Call *func* with exponential-backoff retry on failure."""
-        last_exc: Exception | None = None
-        for attempt in range(max_retries):
-            try:
-                return func()
-            except (TypeError, ValueError):
-                raise
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                wait = 2 ** attempt
-                time.sleep(wait)
-        detail = ""
-        if last_exc is not None:
-            detail = f": {type(last_exc).__name__}: {last_exc}"
-        raise RuntimeError(
-            f"{endpoint_name} failed after {max_retries} retries{detail}"
-        ) from last_exc
-
-    def _cache_get(self, key: str) -> Any | None:
-        if self._cache is None:
-            return None
-        return self._cache.get(key)
-
-    def _cache_set(self, key: str, value: Any, ttl_seconds: int = 86400) -> None:
         if self._cache is not None:
-            self._cache.set(key, value, ttl_seconds=ttl_seconds)
+            self._cache.set(cache_key, out, ttl_seconds=2592000)
+        return out
+
+    def _get_legacy_team_roster(self, team_abbreviation: str, season: str) -> list[dict[str, Any]]:
+        """Return historical team roster from nba_api CommonTeamRoster."""
+        abbr = (team_abbreviation or "").strip().upper()
+        team_id = int(_TEAM_ID_BY_ABBR.get(abbr) or 0)
+        if team_id <= 0:
+            return []
+
+        cache_key = f"nba:legacy:team_roster:{abbr}:{season}"
+        if self._cache is not None:
+            cached = self._cache.get(cache_key)
+            if isinstance(cached, list):
+                return cached
+
+        out: list[dict[str, Any]] = []
+        try:
+            from nba_api.stats.endpoints import commonteamroster
+
+            endpoint = commonteamroster.CommonTeamRoster(team_id=team_id, season=season, timeout=20)
+            rows = endpoint.get_normalized_dict().get("CommonTeamRoster", [])
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    pid = int(row.get("PLAYER_ID") or 0)
+                except (TypeError, ValueError):
+                    pid = 0
+                if pid <= 0:
+                    continue
+                out.append(
+                    {
+                        "player_id": pid,
+                        "full_name": str(row.get("PLAYER") or ""),
+                        "position": str(row.get("POSITION") or ""),
+                    }
+                )
+        except Exception:  # noqa: BLE001
+            out = []
+
+        if self._cache is not None:
+            self._cache.set(cache_key, out, ttl_seconds=2592000)
+        return out
+
+    def _get_legacy_league_rows(self, season: str) -> list[dict[str, Any]]:
+        """Return league rows from nba_api for percentile calculations in legacy seasons."""
+        cache_key = f"nba:legacy:league_rows:{season}"
+        if self._cache is not None:
+            cached = self._cache.get(cache_key)
+            if isinstance(cached, list):
+                return cached
+
+        out: list[dict[str, Any]] = []
+        try:
+            from nba_api.stats.endpoints import leaguedashplayerstats
+
+            endpoint = leaguedashplayerstats.LeagueDashPlayerStats(
+                season=season,
+                season_type_all_star="Regular Season",
+                per_mode_detailed="PerGame",
+                timeout=25,
+            )
+            rows = endpoint.get_normalized_dict().get("LeagueDashPlayerStats", [])
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                out.append(
+                    {
+                        "PTS": float(row.get("PTS") or 0.0),
+                        "AST": float(row.get("AST") or 0.0),
+                        "REB": float(row.get("REB") or 0.0),
+                        "STL": float(row.get("STL") or 0.0),
+                        "BLK": float(row.get("BLK") or 0.0),
+                        "TOV": float(row.get("TOV") or 0.0),
+                        "FGA": float(row.get("FGA") or 0.0),
+                        "FG3A": float(row.get("FG3A") or 0.0),
+                        "FTA": float(row.get("FTA") or 0.0),
+                    }
+                )
+        except Exception:  # noqa: BLE001
+            out = []
+
+        if self._cache is not None:
+            self._cache.set(cache_key, out, ttl_seconds=2592000)
+        return out

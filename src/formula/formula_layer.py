@@ -123,8 +123,28 @@ class FormulaLayer:
         # Convenience accessors
         usg = f.get("usg_pct_proxy", 0.18)
         fga_p36 = f.get("fga_per36", 10.0)
+        fga_pg = f.get("fga_per_game", max(1.0, fga_p36 * 0.75))
         fg3a_rate = f.get("fg3a_rate", 0.30)
         fta_rate = f.get("fta_rate", 0.25)
+        midrange_attempts = f.get("midrange_attempts", 0.0)
+        catch_and_shoot_three_rate = f.get("catch_and_shoot_three_rate", fg3a_rate * 0.55)
+        pull_up_three_rate = f.get("pull_up_three_rate", fg3a_rate * 0.45)
+        unassisted_two_rate = f.get("unassisted_two_rate", 0.10)
+        assisted_2pt_pct = f.get("assisted_2pt_pct", 45.0)
+        assisted_3pt_pct = f.get("assisted_3pt_pct", 75.0)
+        putback_rate = f.get("putback_rate", 0.0)
+        shooting_fouls_drawn_pct = f.get("shooting_fouls_drawn_pct", 0.0)
+        live_ball_turnover_pct = f.get("live_ball_turnover_pct", 12.0)
+        second_chance_off_poss_rate = f.get("second_chance_off_poss_rate", 0.08)
+        seconds_per_poss_off = f.get("seconds_per_poss_off", 14.0)
+        bad_pass_turnovers_p36 = f.get("bad_pass_turnovers_per36", 1.2)
+        lost_ball_turnovers_p36 = f.get("lost_ball_turnovers_per36", 1.0)
+        offensive_fouls_p36 = f.get("offensive_fouls_per36", 0.4)
+        loose_ball_fouls_p36 = f.get("loose_ball_fouls_per36", 0.3)
+        shooting_fouls_p36 = f.get("shooting_fouls_per36", 1.0)
+        offensive_fouls_drawn_p36 = f.get("offensive_fouls_drawn_per36", 0.2)
+        loose_ball_fouls_drawn_p36 = f.get("loose_ball_fouls_drawn_per36", 0.2)
+        blocks_recovered_pct = f.get("blocks_recovered_pct", 45.0)
         ast_p36 = f.get("ast_per36", 3.0)
         pts_p36 = f.get("pts_per36", 15.0)
         stl_p36 = f.get("stl_per36", 1.0)
@@ -174,18 +194,46 @@ class FormulaLayer:
         # Category A: Core Shooting
         # ---------------------------------------------------------------
         shooting_skill = scale(fg3a_rate + zmid_total, [0.05, 0.50], [0.6, 1.1])
+        pbp_creation = scale(unassisted_two_rate, [0.04, 0.24], [0.85, 1.15])
         shot = (
             0.6 * scale(usg, [0.10, 0.35], [20, 75])
             + 0.4 * scale(fga_p36, [3, 25], [15, 75])
-        ) * shooting_skill
+        ) * shooting_skill * pbp_creation
         _pts_pctile_boost = scale(pctile_pts, [0.3, 0.8], [0.95, 1.05])
         t["shot"] = min(shot * _pts_pctile_boost, 75.0)
 
         t["shot_under_basket"] = scale(zra, [0.0, 0.5], [0, 60])
-        close_mix = 0.85 * zpaint + 0.15 * zra
-        t["shot_close"] = scale(close_mix, [0.0, 0.3], [0, 60])
+        # Close should track rim pressure and contact drawing more than paint-share,
+        # since current PBP zone splits can under-report non-rim paint attempts.
+        close_mix = (
+            0.70 * zra
+            + 0.20 * scale(fta_rate, [0.10, 0.50], [0.0, 1.0])
+            + 0.10 * scale(unassisted_two_rate, [0.04, 0.24], [0.0, 1.0])
+            - 0.15 * scale(fg3a_rate, [0.15, 0.50], [0.0, 1.0])
+        )
+        t["shot_close"] = scale(close_mix, [0.05, 0.45], [5, 60])
 
-        shot_mid_range = scale(zmid_total, [0.0, 0.32], [0, 60])
+        _mid_zone_volume = scale(zmid_total, [0.10, 0.42], [0, 48])
+        _mid_attempt_rate = max(0.0, min(1.0, float(midrange_attempts) / max(float(fga_pg), 1.0)))
+        _mid_attempt_mult = scale(_mid_attempt_rate, [0.12, 0.40], [0.85, 1.20])
+        _mid_eff_mult = scale(fg_pct, [0.42, 0.56], [0.90, 1.08])
+        _mid_creator_mult = scale(unassisted_two_rate, [0.04, 0.24], [0.92, 1.10])
+        _mid_three_penalty = scale(fg3a_rate, [0.15, 0.55], [1.00, 0.80])
+        _mid_pullup_mult = scale(pull_up_three_rate, [0.02, 0.22], [0.85, 1.08])
+        _mid_interior_penalty = scale(zra + zpaint, [0.15, 0.55], [1.00, 0.84])
+        _mid_big_pull_penalty = 1.0
+        if pos in ("PF", "C"):
+            _mid_big_pull_penalty = scale(pull_up_three_rate, [0.00, 0.12], [0.84, 1.00])
+        shot_mid_range = (
+            _mid_zone_volume
+            * _mid_attempt_mult
+            * _mid_eff_mult
+            * _mid_creator_mult
+            * _mid_three_penalty
+            * _mid_pullup_mult
+            * _mid_interior_penalty
+            * _mid_big_pull_penalty
+        )
         t["shot_mid_range"] = shot_mid_range
 
         t["spot_up_shot_mid_range"] = shot_mid_range * 0.7
@@ -201,12 +249,16 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category B: Three-Point Subtypes
         # ---------------------------------------------------------------
-        t["spot_up_shot_three"] = shot_three * 0.85
-        t["off_screen_shot_three"] = shot_three * 0.65
+        cs3_factor = scale(catch_and_shoot_three_rate, [0.03, 0.30], [0.65, 1.20])
+        pull_up_factor = scale(pull_up_three_rate, [0.02, 0.22], [0.65, 1.25])
+        t["spot_up_shot_three"] = shot_three * cs3_factor
+        t["off_screen_shot_three"] = shot_three * (0.50 + 0.35 * cs3_factor)
+        _transition_pace = scale(seconds_per_poss_off, [16.0, 12.0], [0.75, 1.25])
         t["transition_pull_up_three"] = (
-            scale(fg3a_rate, [0.15, 0.45], [0, 30])
+            scale(pull_up_three_rate, [0.02, 0.20], [0, 30])
             * scale(pts_p36, [10, 30], [0.5, 1.2])
             * (1.0 if pos in ("PG", "SG", "SF") else 0.4)
+            * _transition_pace
         )
 
         # ---------------------------------------------------------------
@@ -223,11 +275,12 @@ class FormulaLayer:
             + 0.25 * scale(fg3a_rate, [0.20, 0.60], [0.0, 1.0])
         )
         _creator_stepback_three = max(0.0, min(1.0, _creator_stepback_three))
+        _pbp_stepback_creator = scale(unassisted_two_rate, [0.04, 0.24], [0.85, 1.20])
 
         _stepback_three_base = (
             scale(shot_three, [0, 60], [0, 30]) * dribble_boost
             + scale(fg3a_rate, [0.3, 0.6], [0, 10])
-        ) * _eff_three
+        ) * _eff_three * _pbp_stepback_creator
         _stepback_three_pre_cap = _stepback_three_base * (1.0 + 0.45 * _creator_stepback_three)
         _stepback_three_cap = (
             t["stepback_jumper_mid_range"]
@@ -244,7 +297,12 @@ class FormulaLayer:
         # Category D: Pull-Up Shooting
         # ---------------------------------------------------------------
         t["drive_pull_up_mid_range"] = scale(shot_mid_range, [0, 55], [0, 40]) * dribble_boost
-        t["drive_pull_up_three"] = scale(fg3a_rate, [0.0, 0.4], [0, 25]) * dribble_boost
+        _assist_3_penalty = scale(assisted_3pt_pct, [90.0, 55.0], [0.80, 1.18])
+        t["drive_pull_up_three"] = (
+            scale(pull_up_three_rate, [0.0, 0.24], [0, 25])
+            * dribble_boost
+            * _assist_3_penalty
+        )
 
         # ---------------------------------------------------------------
         # Category E: Finishing
@@ -258,9 +316,18 @@ class FormulaLayer:
         # Primarily a big man skill — guards almost never attempt putbacks
         _pb_oreb = scale(oreb_pct, [0.05, 0.40], [0, 50])
         _pb_pos_factor = {"C": 1.0, "PF": 0.90, "SF": 0.55, "SG": 0.20, "PG": 0.15}.get(pos, 0.30)
-        t["putback"] = min(55.0, _pb_oreb * _pb_pos_factor)
+        _pb_pbp = scale(putback_rate, [0.01, 0.09], [0, 50])
+        t["putback"] = min(55.0, max(_pb_oreb * _pb_pos_factor, _pb_pbp * _pb_pos_factor))
         t["use_glass"] = scale(zpaint + zra, [0.1, 0.5], [10, 45])
-        t["step_through_shot"] = scale(zpaint, [0.0, 0.25], [0, 30]) * (0.3 + 0.7 * post_factor)
+        _step_signal = (
+            0.55 * zpaint
+            + 0.30 * zra
+            + 0.15 * scale(fta_rate, [0.10, 0.50], [0.0, 1.0])
+        )
+        t["step_through_shot"] = (
+            scale(_step_signal, [0.03, 0.40], [3, 32])
+            * (0.35 + 0.65 * post_factor)
+        )
 
         # ---------------------------------------------------------------
         # Category F: Craft Finishing — MOVED after Category H (needs drive)
@@ -288,19 +355,20 @@ class FormulaLayer:
         # ISO possessions — self-created drives off the dribble
         iso_pos = f.get("isolation_possessions", 0.0)
         iso_drive = scale(iso_pos, [0.3, 5.0], [10, 45])
+        creation_drive = scale(unassisted_two_rate, [0.03, 0.24], [8, 40])
         # PnR ball handler — drives created out of pick and roll
         pnr_bh_pos = f.get("pick_and_roll_ball_handler_possessions", 0.0)
 
         if pos in ("PG", "SG"):
             # Guards: blend zone rate, ISO/PnR activity, and contact rate
             pnr_drive = scale(pnr_bh_pos, [0.5, 8.0], [10, 40])
-            drive = (0.30 * zone_drive + 0.30 * contact_drive
-                     + 0.20 * iso_drive + 0.20 * pnr_drive) * drive_boost
+            drive = (0.26 * zone_drive + 0.28 * contact_drive
+                     + 0.18 * iso_drive + 0.15 * pnr_drive + 0.13 * creation_drive) * drive_boost
         elif pos == "SF":
             # Wings: heavier on zone rate and contact
             pnr_drive = scale(pnr_bh_pos, [0.5, 5.0], [10, 30])
-            drive = (0.35 * zone_drive + 0.30 * contact_drive
-                     + 0.20 * iso_drive + 0.15 * pnr_drive) * drive_boost
+            drive = (0.32 * zone_drive + 0.28 * contact_drive
+                     + 0.18 * iso_drive + 0.12 * pnr_drive + 0.10 * creation_drive) * drive_boost
         else:
             # Bigs: Must create their own offense to be drivers.
             big_creation = scale(iso_pos + pnr_bh_pos, [0.2, 4.0], [0.15, 1.0])
@@ -394,8 +462,17 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category I: Triple Threat
         # ---------------------------------------------------------------
-        t["triple_threat_pump_fake"] = scale(shot_mid_range + shot_three, [0, 100], [10, 45])
-        t["triple_threat_jab_step"] = scale(drive, [0, 60], [10, 40])
+        _tt_pace = scale(seconds_per_poss_off, [12.0, 16.0], [0.85, 1.20])
+        _tt_assist_control = scale(assisted_2pt_pct + assisted_3pt_pct, [100.0, 170.0], [0.90, 1.10])
+        t["triple_threat_pump_fake"] = (
+            scale(shot_mid_range + shot_three, [0, 100], [10, 45])
+            * _tt_pace
+            * _tt_assist_control
+        )
+        t["triple_threat_jab_step"] = (
+            scale(drive, [0, 60], [10, 40])
+            * scale(unassisted_two_rate, [0.03, 0.24], [0.90, 1.15])
+        )
         # --- triple_threat_idle: models "think time / decision time before acting"
         # LOW idle = fast decision maker (slashers, shooters, traditional bigs)
         # HIGH idle = methodical ISO creator who probes the defense (SGA, Luka, Harden)
@@ -425,16 +502,34 @@ class FormulaLayer:
             _idle_big_rescue = 1.0   # unicorn big (high AST): allow normal idle
         else:
             _idle_big_rescue = 1.0
-        _idle_raw = _idle_creation * _idle_speed * _idle_quick_trigger * _idle_big_rescue
+        _idle_pace = scale(seconds_per_poss_off, [12.0, 16.0], [0.75, 1.25])
+        _idle_risk = scale(live_ball_turnover_pct, [8.0, 18.0], [0.92, 1.12])
+        _idle_raw = (
+            _idle_creation
+            * _idle_speed
+            * _idle_quick_trigger
+            * _idle_big_rescue
+            * _idle_pace
+            * _idle_risk
+        )
         t["triple_threat_idle"] = max(5.0, min(50.0, _idle_raw))
         t["triple_threat_shoot"] = scale(shot_three + shot_mid_range, [0, 100], [10, 45])
 
         # ---------------------------------------------------------------
         # Category J: Dribble Setup
         # ---------------------------------------------------------------
-        t["setup_with_sizeup"] = scale(usg, [0.10, 0.30], [10, 45]) * dribble_boost
+        _setup_creator = (
+            0.50 * scale(usg, [0.10, 0.35], [0.0, 1.0])
+            + 0.30 * scale(unassisted_two_rate, [0.03, 0.24], [0.0, 1.0])
+            + 0.20 * scale(pull_up_three_rate, [0.02, 0.22], [0.0, 1.0])
+        )
+        t["setup_with_sizeup"] = scale(_setup_creator, [0.0, 1.0], [10, 45]) * dribble_boost
         t["setup_with_hesitation"] = t["setup_with_sizeup"] * 0.9
-        t["no_setup_dribble"] = 35 - scale(usg, [0.10, 0.30], [0, 20])
+        _no_setup_quick = (
+            0.60 * scale(catch_and_shoot_three_rate, [0.03, 0.30], [0.0, 1.0])
+            + 0.40 * scale(seconds_per_poss_off, [16.0, 12.0], [0.0, 1.0])
+        )
+        t["no_setup_dribble"] = 35 - scale(_setup_creator, [0.0, 1.0], [0, 18]) + scale(_no_setup_quick, [0.0, 1.0], [0, 10])
 
         # ---------------------------------------------------------------
         # Category K: Dribble Moves
@@ -442,7 +537,16 @@ class FormulaLayer:
         # Position/size-based differentiation: guards have more elaborate ball-handling
         _gd = {"PG": 1.20, "SG": 1.05, "SF": 0.90, "PF": 0.70, "C": 0.45}.get(pos, 0.90)
         _h_dribble = scale(height_inches, [72, 84], [1.15, 0.90])  # shorter → better ball handling
-        creation_score = scale(usg, [0.10, 0.30], [5, 35]) * dribble_boost
+        _handle_creation = (
+            0.45 * scale(usg, [0.10, 0.35], [0.0, 1.0])
+            + 0.35 * scale(unassisted_two_rate, [0.03, 0.24], [0.0, 1.0])
+            + 0.20 * scale(pull_up_three_rate, [0.02, 0.22], [0.0, 1.0])
+        )
+        _handle_risk = (
+            0.60 * scale(bad_pass_turnovers_p36, [0.5, 2.8], [0.90, 1.10])
+            + 0.40 * scale(lost_ball_turnovers_p36, [0.4, 2.5], [0.90, 1.10])
+        )
+        creation_score = scale(_handle_creation, [0.0, 1.0], [5, 35]) * dribble_boost * _handle_risk
         t["driving_crossover"] = creation_score * 1.0 * _gd
         t["driving_spin"] = creation_score * 0.8
         t["driving_step_back"] = creation_score * 0.7
@@ -459,7 +563,10 @@ class FormulaLayer:
         # Category L: Drive Finishing
         # ---------------------------------------------------------------
         t["attack_strong_on_drive"] = min(scale(fta_rate, [0.1, 0.5], [20, 65]), 65.0)
-        t["dish_to_open_man"] = scale(ast_p36, [1, 10], [15, 50])
+        _sfd_bonus = scale(shooting_fouls_drawn_pct, [4.0, 16.0], [0, 12])
+        t["attack_strong_on_drive"] = min(65.0, t["attack_strong_on_drive"] + _sfd_bonus)
+        _dish_safety = scale(bad_pass_turnovers_p36, [2.6, 0.5], [0.85, 1.10])
+        t["dish_to_open_man"] = scale(ast_p36, [1, 10], [15, 50]) * _dish_safety
 
         # ---------------------------------------------------------------
         # Category M: Passing
@@ -468,7 +575,13 @@ class FormulaLayer:
         # disciplined passers (high ratio) pass flashier less; riskier passers more so
         guard_flashy_bonus = 1.1 if pos in ("PG", "SG") else 1.0
         _flashy_tov = scale(ast_to_tov, [0.5, 3.5], [1.10, 0.85])
-        t["flashy_pass"] = scale(ast_p36, [2, 12], [5, 55]) * guard_flashy_bonus * _flashy_tov
+        _flashy_live_ball = scale(live_ball_turnover_pct, [8.0, 18.0], [0.92, 1.10])
+        t["flashy_pass"] = (
+            scale(ast_p36, [2, 12], [5, 55])
+            * guard_flashy_bonus
+            * _flashy_tov
+            * _flashy_live_ball
+        )
         _lob_vision = (
             0.60 * scale(ast_p36, [2.0, 12.0], [0.0, 1.0])
             + 0.15 * scale(ast_to_tov, [0.8, 3.5], [0.0, 1.0])
@@ -509,16 +622,22 @@ class FormulaLayer:
         # Post-up covers BOTH scoring and playmaking from the post.
         post_up_poss = f.get("post_up_possessions", 0.0)
         post_up_ppp = f.get("post_up_ppp", 0.0)
+        _post_assist_gate = scale(assisted_2pt_pct, [70.0, 35.0], [0.85, 1.15])
 
         # Post-up tendency: driven by real post possessions + paint zone context
         _pu_volume = scale(post_up_poss, [0.0, 6.0], [0, 40])
         _pu_paint = scale(zpaint, [0.05, 0.40], [0, 10])
         _pu_size = scale(height_inches, [76, 84], [0.75, 1.10]) * scale(weight_lbs, [200, 280], [0.85, 1.15])
-        # Size gate: small guards produce hard zeros
+        # Guard-size suppressor: small guards usually post less, but do not hard-zero
+        # players with strong observed post-up volume (e.g., bigger creators).
         if height_inches < 76 and weight_lbs < 210:
-            _pu_volume = 0.0
-            _pu_paint = 0.0
-        t["post_up"] = min(60.0, (_pu_volume + _pu_paint) * _pu_size)
+            if post_up_poss < 1.8:
+                _guard_penalty = 0.25
+            else:
+                _guard_penalty = scale(post_up_poss, [1.8, 6.0], [0.55, 0.95])
+            _pu_volume *= _guard_penalty
+            _pu_paint *= _guard_penalty
+        t["post_up"] = min(60.0, (_pu_volume + _pu_paint) * _pu_size * _post_assist_gate)
         _pu_base = _pu_volume + _pu_paint  # pre-size volume for finesse moves
 
         # Big-man floor: centers/PFs always have some post presence from size alone
@@ -567,32 +686,60 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Category O: Playstyle Sliders
         # ---------------------------------------------------------------
-        if pos in ("PG", "SG"):
-            t["roll_vs_pop"] = 40 + scale(fg3a_rate, [0.15, 0.50], [0, 25])
-        else:
-            t["roll_vs_pop"] = 75 - scale(fg3a_rate, [0.0, 0.3], [0, 50])
+        _roll_signal = (
+            0.50 * scale(zra, [0.08, 0.45], [0.0, 1.0])
+            + 0.25 * scale(assisted_2pt_pct, [35.0, 75.0], [0.0, 1.0])
+            + 0.25 * scale(second_chance_off_poss_rate, [0.04, 0.18], [0.0, 1.0])
+        )
+        _pop_signal = (
+            0.60 * scale(fg3a_rate, [0.10, 0.55], [0.0, 1.0])
+            + 0.40 * scale(catch_and_shoot_three_rate, [0.03, 0.30], [0.0, 1.0])
+        )
+        t["roll_vs_pop"] = scale(_roll_signal - _pop_signal, [-1.0, 1.0], [5, 95])
         # transition_spot_up: >50 = spot up for 3, <50 = cut to basket
         # Shooters spot up; rim attackers and non-shooters cut
         _trans_volume = scale(fg3a_rate, [0.10, 0.55], [0, 30])    # how often they take 3s
         _trans_accuracy = scale(fg3_pct, [0.30, 0.40], [0, 30])    # can they actually make them
         _trans_rim_cut = scale(zra, [0.08, 0.40], [0, 30])         # rim attackers cut instead
-        t["transition_spot_up"] = max(5.0, 20 + _trans_volume + _trans_accuracy - _trans_rim_cut)
+        _trans_second_chance_push = scale(second_chance_off_poss_rate, [0.04, 0.18], [-6, 8])
+        t["transition_spot_up"] = max(
+            5.0,
+            20 + _trans_volume + _trans_accuracy - _trans_rim_cut + _trans_second_chance_push,
+        )
 
         # ---------------------------------------------------------------
         # Category P: Isolation
         # ---------------------------------------------------------------
         # Primary signal: actual ISO possessions per game (synergy data)
         # Players who don't ISO shouldn't have ISO tendencies
-        _iso_volume = scale(iso_pos, [0.0, 7.0], [0, 35])
+        _iso_volume = scale(iso_pos, [0.0, 7.0], [0, 30])
+        _iso_unassisted = scale(unassisted_two_rate, [0.03, 0.24], [0.75, 1.30])
+        _iso_assist_gate = scale(assisted_2pt_pct, [75.0, 35.0], [0.85, 1.15])
         # USG multiplier: high-usage = more willing to call their own number
         _iso_usg = scale(usg, [0.12, 0.35], [0.6, 1.25])
         # Efficiency: good scorers are bolder in ISO
         _iso_eff = scale(ts_pct, [0.50, 0.65], [0.90, 1.15])
-        iso_base = _iso_volume * _iso_usg * _iso_eff
-        t["iso_vs_elite_defender"] = iso_base * 0.40
-        t["iso_vs_good_defender"] = iso_base * 0.60
-        t["iso_vs_average_defender"] = iso_base * 0.80
-        t["iso_vs_poor_defender"] = iso_base * 1.0
+        _iso_creator_profile = (
+            0.50 * scale(usg, [0.14, 0.34], [0.0, 1.0])
+            + 0.30 * scale(ast_p36, [2.0, 9.0], [0.0, 1.0])
+            + 0.20 * scale(unassisted_two_rate, [0.05, 0.24], [0.0, 1.0])
+        )
+        _iso_role_mult = scale(_iso_creator_profile, [0.0, 1.0], [0.42, 1.05])
+        _iso_drive_mult = scale(t.get("drive", 20.0), [20.0, 55.0], [0.85, 1.05])
+        iso_base = (
+            _iso_volume
+            * _iso_usg
+            * _iso_eff
+            * _iso_unassisted
+            * _iso_assist_gate
+            * _iso_role_mult
+            * _iso_drive_mult
+            * 0.92
+        )
+        t["iso_vs_elite_defender"] = iso_base * 0.35
+        t["iso_vs_good_defender"] = iso_base * 0.55
+        t["iso_vs_average_defender"] = iso_base * 0.75
+        t["iso_vs_poor_defender"] = iso_base * 0.95
 
         # ---------------------------------------------------------------
         # Category Q: Discipline
@@ -600,7 +747,14 @@ class FormulaLayer:
         # Higher for low-usage role players (stick to playbook), lower for stars
         # to preserve freelance creation. Hard-clamped to avoid offensive stalling.
         pos_discipline = {"PG": -4, "SG": -1, "SF": 0, "PF": 2, "C": 4}
-        play_discipline = 56 - scale(usg, [0.10, 0.35], [0, 24]) + pos_discipline.get(pos, 0)
+        play_discipline = (
+            52
+            - scale(usg, [0.10, 0.35], [0, 20])
+            + scale(seconds_per_poss_off, [12.0, 16.0], [-4, 8])
+            + scale(assisted_2pt_pct + assisted_3pt_pct, [100.0, 170.0], [-2, 8])
+            - scale(live_ball_turnover_pct, [8.0, 18.0], [0, 8])
+            + pos_discipline.get(pos, 0)
+        )
         t["play_discipline"] = max(30.0, min(55.0, play_discipline))
 
         # ---------------------------------------------------------------
@@ -609,7 +763,8 @@ class FormulaLayer:
         # Steal tendency: guards get more on-ball/interception credit per steal
         steal_pos_scale = {"PG": 1.0, "SG": 0.9, "SF": 0.85, "PF": 0.7, "C": 0.55}
         steal_scale = steal_pos_scale.get(pos, 0.85)
-        t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
+        _intercept_creation = scale(bad_pass_turnovers_p36, [0.5, 2.8], [0.92, 1.10])
+        t["pass_interception"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale * _intercept_creation
         t["on_ball_steal"] = scale(stl_p36, [0.3, 2.5], [15, 55]) * steal_scale
         pos_contest_base = {"PG": 30, "SG": 32, "SF": 33, "PF": 35, "C": 38}
         t["contest_shot"] = (
@@ -618,10 +773,10 @@ class FormulaLayer:
             + scale(stl_p36, [0.3, 2.0], [0, 10])
         )
         block_scale = profile["block_scale"]
-        raw_block = scale(blk_p36, [0.0, 3.5], [5, 55])
+        raw_block = scale(blk_p36, [0.0, 3.5], [5, 55]) * scale(blocks_recovered_pct, [35.0, 60.0], [0.90, 1.12])
         t["block_shot"] = raw_block * (0.6 + 0.4 * block_scale)
         t["take_charge"] = (
-            scale(pf_p36, [1.5, 4.0], [5, 30]) * (1 - post_factor * 0.3)
+            scale(offensive_fouls_drawn_p36 + loose_ball_fouls_drawn_p36, [0.1, 1.6], [5, 35]) * (1 - post_factor * 0.3)
         )
 
         # ---------------------------------------------------------------
@@ -629,9 +784,18 @@ class FormulaLayer:
         # ---------------------------------------------------------------
         # Foul: how often the player commits fouls
         # Higher floor — every NBA player fouls; scale uses the full range
-        t["foul"] = scale(pf_p36, [1.0, 4.5], [25, 60])
+        _foul_shape = (
+            0.60 * scale(pf_p36, [1.0, 4.5], [25, 60])
+            + 0.20 * scale(loose_ball_fouls_p36, [0.0, 1.2], [20, 60])
+            + 0.20 * scale(shooting_fouls_p36, [0.2, 2.5], [20, 60])
+        )
+        t["foul"] = _foul_shape
         # Hard foul: physicality/aggression — size + foul rate + interior play
-        _hf_fouls = scale(pf_p36, [1.5, 4.5], [5, 35])
+        _hf_fouls = (
+            0.50 * scale(pf_p36, [1.5, 4.5], [5, 35])
+            + 0.30 * scale(offensive_fouls_p36, [0.1, 1.4], [5, 35])
+            + 0.20 * scale(loose_ball_fouls_p36, [0.0, 1.2], [5, 30])
+        )
         _hf_size = scale(weight_lbs, [185, 260], [0.6, 1.0])
         _hf_interior = scale(zra + zpaint, [0.10, 0.50], [0.7, 1.0])
         t["hard_foul"] = min(55.0, _hf_fouls * _hf_size * _hf_interior)
@@ -640,8 +804,9 @@ class FormulaLayer:
         # Touches
         # ---------------------------------------------------------------
         t["touches"] = min(
-            0.5 * scale(ast_p36, [0, 12], [15, 65])
-            + 0.5 * scale(usg, [0.10, 0.30], [20, 60]),
+            0.40 * scale(ast_p36, [0, 12], [15, 65])
+            + 0.35 * scale(usg, [0.10, 0.30], [20, 60])
+            + 0.25 * scale(seconds_per_poss_off, [12.0, 16.0], [15, 60]),
             65.0,
         )
 

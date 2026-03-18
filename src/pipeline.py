@@ -67,6 +67,26 @@ def _round_family_to_parent(
         for idx in range(remainder):
             units[fractions[idx][1]] += 1
 
+    def _steal_one_unit(exclude_indices: set[int]) -> bool:
+        donors = sorted(
+            [i for i in range(len(units)) if i not in exclude_indices and units[i] > 1],
+            key=lambda i: units[i],
+            reverse=True,
+        )
+        if not donors:
+            return False
+        units[donors[0]] -= 1
+        return True
+
+    # Soft floor: when close-shot parent is meaningful, avoid hard zeros in
+    # lanes that have non-zero raw presence.
+    if len(family_keys) == 3 and target_units >= 3 and parent_rounded >= 15:
+        active = [i for i, value in enumerate(family_raw) if value > 0.0]
+        if active and target_units >= len(active):
+            for idx in active:
+                if units[idx] == 0 and _steal_one_unit({idx}):
+                    units[idx] = 1
+
     for key, unit in zip(family_keys, units):
         rounded[key] = unit * 5
 
@@ -162,6 +182,18 @@ def _round_mid_family(
             if not _steal_one_unit(top_idx):
                 break
             units[top_idx] += 1
+
+    parent_rounded = rounded.get(parent_key)
+    if parent_rounded is None:
+        parent_rounded = _round_to_5(raw_values.get(parent_key, 0.0))
+    # Soft floor: when mid parent is present, prevent active lanes from being
+    # rounded to zero just because of 5-step quantization.
+    if parent_rounded >= 15 and target_units >= 4:
+        active = [i for i, value in enumerate(family_raw) if value > 0.0]
+        if active and target_units >= len(active):
+            for idx in active:
+                if units[idx] == 0 and _steal_one_unit(idx):
+                    units[idx] = 1
 
     for key, unit in zip(family_keys, units):
         rounded[key] = unit * 5

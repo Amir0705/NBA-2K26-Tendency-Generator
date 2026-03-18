@@ -22,13 +22,14 @@ from src.attributes.calculator import ATTRIBUTE_LABELS, ATTRIBUTE_CATEGORIES
 from src.feedback.feedback_store import FeedbackStore
 from src.feedback.firebase_feedback_store import FirebaseFeedbackStore
 from src.pipeline import TendencyPipeline
+from src.seasons import DEFAULT_SEASON, data_mode_for_season, normalize_season
 
 _VALID_TEAMS = {
     "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
     "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
     "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
+    "CHH", "NJN", "NOH", "NOK", "SEA", "VAN",
 }
-_DEFAULT_TEAM_ROSTER_SEASON = "2025-26"
 
 _pipeline: TendencyPipeline | None = None
 _auth_store: Any = None
@@ -196,6 +197,20 @@ def _get_pipeline() -> TendencyPipeline:
     return _pipeline
 
 
+def _require_supported_season(season: str) -> str:
+    """Validate and normalize season query strings."""
+    try:
+        return normalize_season(season, default=DEFAULT_SEASON)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _resolve_roster_season(season: str, roster_season: str | None) -> str:
+    """Use selected season for roster by default unless override is provided."""
+    candidate = str(roster_season or "").strip() or season
+    return _require_supported_season(candidate)
+
+
 @app.post("/auth/login")
 def auth_login(payload: dict[str, Any]) -> dict[str, Any]:
     username = str(payload.get("username", "")).strip()
@@ -315,7 +330,8 @@ def feedback_submit(payload: dict[str, Any], request: Request) -> dict[str, Any]
 
     # Resolve canonical tendency keys from player output and registry metadata.
     try:
-        generated = pipeline.generate(player_id, season=str(payload.get("season", "2025-26")))
+        feedback_season = _require_supported_season(str(payload.get("season", DEFAULT_SEASON)))
+        generated = pipeline.generate(player_id, season=feedback_season)
     except Exception:
         generated = {"tendencies": {}}
     valid_keys = set((generated.get("tendencies") or {}).keys())
@@ -402,6 +418,7 @@ def _build_tendency_response(
         "position": result.get("position", ""),
         "team": team,
         "season": season,
+        "data_mode": data_mode_for_season(season),
         "play_style_count": result.get("play_style_count", 0),
         "play_style_usage_rate": result.get("play_style_usage_rate", 0.0),
         "play_style_priorities": result.get("play_style_priorities", []),
@@ -476,9 +493,10 @@ def search_player(name: str) -> dict[str, Any]:
 
 
 @app.get("/generate/id/{player_id}")
-def generate_by_id(player_id: int, season: str = "2024-25") -> dict[str, Any]:
+def generate_by_id(player_id: int, season: str = DEFAULT_SEASON) -> dict[str, Any]:
     """Generate tendencies by player ID."""
     pipeline = _get_pipeline()
+    season = _require_supported_season(season)
     try:
         result = pipeline.generate(player_id, season=season)
         result = _apply_feedback_learning(player_id=player_id, result=result)
@@ -500,9 +518,10 @@ def generate_by_id(player_id: int, season: str = "2024-25") -> dict[str, Any]:
 
 
 @app.get("/generate/{player_name}")
-def generate_by_name(player_name: str, season: str = "2024-25") -> dict[str, Any]:
+def generate_by_name(player_name: str, season: str = DEFAULT_SEASON) -> dict[str, Any]:
     """Generate tendencies for a player by name."""
     pipeline = _get_pipeline()
+    season = _require_supported_season(season)
     results = pipeline.search_player(player_name)
     if not results:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
@@ -526,13 +545,16 @@ def generate_by_name(player_name: str, season: str = "2024-25") -> dict[str, Any
 @app.get("/team/{team_abbr}")
 def generate_team(
     team_abbr: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+    season: str = DEFAULT_SEASON,
+    roster_season: str | None = None,
 ) -> dict[str, Any]:
     """Generate tendencies for all players on a team."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+
+    season = _require_supported_season(season)
+    roster_season = _resolve_roster_season(season, roster_season)
 
     pipeline = _get_pipeline()
     roster = pipeline._client.get_team_roster(abbr, season=roster_season)
@@ -584,6 +606,7 @@ def generate_team(
         "team": abbr,
         "season": season,
         "roster_season": roster_season,
+        "data_mode": data_mode_for_season(season),
         "total_players": total_players,
         "generated_count": len(players),
         "failed_count": max(0, total_players - len(players)),
@@ -596,13 +619,16 @@ def generate_team(
 def generate_team_player(
     team_abbr: str,
     player_name: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+    season: str = DEFAULT_SEASON,
+    roster_season: str | None = None,
 ) -> dict[str, Any]:
     """Generate tendencies for a specific player on a team."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+
+    season = _require_supported_season(season)
+    roster_season = _resolve_roster_season(season, roster_season)
 
     pipeline = _get_pipeline()
     roster = pipeline._client.get_team_roster(abbr, season=roster_season)
@@ -680,9 +706,10 @@ def _resolve_player_full(
 
 
 @app.get("/export/excel/{player_name}")
-def export_excel_player(player_name: str, season: str = "2024-25") -> Response:
+def export_excel_player(player_name: str, season: str = DEFAULT_SEASON) -> Response:
     """Export a single player's tendencies as an Excel file."""
     pipeline = _get_pipeline()
+    season = _require_supported_season(season)
     full_name, position, tendencies = _resolve_player(player_name, season, pipeline)
     xlsx_bytes = export_player_excel(full_name, tendencies, pipeline._registry, position)
     filename = f"{_safe_filename(full_name)}_tendencies.xlsx"
@@ -696,13 +723,16 @@ def export_excel_player(player_name: str, season: str = "2024-25") -> Response:
 @app.get("/export/excel/team/{team_abbr}")
 def export_excel_team(
     team_abbr: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+    season: str = DEFAULT_SEASON,
+    roster_season: str | None = None,
 ) -> Response:
     """Export a full team's tendencies as an Excel file."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+    season = _require_supported_season(season)
+    roster_season = _resolve_roster_season(season, roster_season)
+
     pipeline = _get_pipeline()
     roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
@@ -731,13 +761,16 @@ def export_excel_team(
 @app.get("/export/excel/team/{team_abbr}/attributes")
 def export_excel_team_attributes(
     team_abbr: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+    season: str = DEFAULT_SEASON,
+    roster_season: str | None = None,
 ) -> Response:
     """Export a full team's attributes as an Excel file."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+    season = _require_supported_season(season)
+    roster_season = _resolve_roster_season(season, roster_season)
+
     pipeline = _get_pipeline()
     roster = pipeline._client.get_team_roster(abbr, season=roster_season)
     if not roster:
@@ -764,9 +797,10 @@ def export_excel_team_attributes(
 
 
 @app.get("/export/2k/{player_name}")
-def export_2k_player(player_name: str, season: str = "2024-25") -> Response:
+def export_2k_player(player_name: str, season: str = DEFAULT_SEASON) -> Response:
     """Export a single player as a full 2K-style JSON using the template format."""
     pipeline = _get_pipeline()
+    season = _require_supported_season(season)
     full_name, pid, team, result = _resolve_player_full(player_name, season, pipeline)
     payload = export_player_2k_json(
         player_name=full_name,
@@ -787,13 +821,16 @@ def export_2k_player(player_name: str, season: str = "2024-25") -> Response:
 @app.get("/export/2k/team/{team_abbr}")
 def export_2k_team_zip(
     team_abbr: str,
-    season: str = "2024-25",
-    roster_season: str = _DEFAULT_TEAM_ROSTER_SEASON,
+    season: str = DEFAULT_SEASON,
+    roster_season: str | None = None,
 ) -> Response:
     """Export a team's players as a ZIP of full 2K-style JSON files."""
     abbr = team_abbr.upper()
     if abbr not in _VALID_TEAMS:
         raise HTTPException(status_code=404, detail=f"Team '{team_abbr}' not found")
+
+    season = _require_supported_season(season)
+    roster_season = _resolve_roster_season(season, roster_season)
 
     pipeline = _get_pipeline()
     roster = pipeline._client.get_team_roster(abbr, season=roster_season)

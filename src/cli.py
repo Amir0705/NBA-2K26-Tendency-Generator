@@ -7,10 +7,13 @@ import os
 import sys
 from typing import Any
 
+from src.seasons import DEFAULT_SEASON, normalize_season
+
 _VALID_TEAMS = {
     "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
     "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
     "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
+    "CHH", "NJN", "NOH", "NOK", "SEA", "VAN",
 }
 
 
@@ -119,7 +122,7 @@ def cmd_single(args: argparse.Namespace) -> None:
     if result is None:
         sys.exit(1)
 
-    print(f"Saved → {out_path}")
+    print(f"Saved -> {out_path}")
     _print_summary([result])
 
 
@@ -171,10 +174,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--team", metavar="ABBR", help="Generate tendencies for an entire team (e.g. GSW)")
     parser.add_argument("--search", metavar="NAME", help="Search players by name without generating tendencies")
-    parser.add_argument("--season", default="2024-25", metavar="YYYY-YY", help="NBA season (default: 2024-25)")
+    parser.add_argument("--season", default=DEFAULT_SEASON, metavar="YYYY-YY", help=f"NBA season (default: {DEFAULT_SEASON})")
     parser.add_argument("--output-dir", default="output", metavar="PATH", help="Output directory (default: output/)")
 
     args = parser.parse_args(argv)
+    try:
+        args.season = normalize_season(args.season, default=DEFAULT_SEASON)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
 
     if args.search:
         cmd_search(args)

@@ -58,18 +58,22 @@ let _tendencyOriginalValues = {};
 const _ROLE_VIEWER = "viewer";
 const _ROLE_EDITOR = "editor";
 const _ROLE_ADMIN = "admin";
+const _SEASON_MIN = 2000;
+const _SEASON_MAX = 2025;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
 const playerSearch    = document.getElementById("playerSearch");
 const generatePlayerBtn = document.getElementById("generatePlayerBtn");
 const suggestions     = document.getElementById("suggestions");
-const seasonSelect    = document.getElementById("seasonSelect");
-const teamSelect      = document.getElementById("teamSelect");
-const generateTeamBtn = document.getElementById("generateTeamBtn");
+const seasonSelect     = document.getElementById("seasonSelect");
+const teamSeasonSelect = document.getElementById("teamSeasonSelect");
+const teamSelect       = document.getElementById("teamSelect");
+const generateTeamBtn  = document.getElementById("generateTeamBtn");
 const recentPlayersEl = document.getElementById("recentPlayers");
 const playerResult    = document.getElementById("playerResult");
 const playerNameEl    = document.getElementById("playerName");
 const playerMetaEl    = document.getElementById("playerMeta");
+const dataModeBadge   = document.getElementById("dataModeBadge");
 const playStylesSection = document.getElementById("playStylesSection");
 const playStylesContainer = document.getElementById("playStylesContainer");
 const guardrailBadge  = document.getElementById("guardrailBadge");
@@ -149,6 +153,7 @@ function setBusyState(isBusy) {
   generatePlayerBtn.disabled = isBusy;
   compareBtn.disabled = isBusy;
   seasonSelect.disabled = isBusy;
+  teamSeasonSelect.disabled = isBusy;
   teamSelect.disabled = isBusy;
   generateTeamBtn.disabled = isBusy;
 }
@@ -176,6 +181,7 @@ function applyAuthState() {
   generatePlayerBtn.disabled = disableApp;
   compareBtn.disabled = disableApp;
   seasonSelect.disabled = disableApp;
+  teamSeasonSelect.disabled = disableApp;
   teamSelect.disabled = disableApp;
   generateTeamBtn.disabled = disableApp;
 }
@@ -187,6 +193,56 @@ function showError(msg) {
 
 function hideError() {
   errorBanner.hidden = true;
+}
+
+function buildSeasonLabel(startYear) {
+  const end = String(startYear + 1).slice(-2);
+  return `${startYear}-${end}`;
+}
+
+function populateSeasonOptions() {
+  // Player generation starts at _SEASON_MAX - 1 (2024-25) because the current
+  // season is unfinished; use the team selector if you need 2025-26 rosters.
+  const _PLAYER_SEASON_MAX = _SEASON_MAX - 1;
+  const current = seasonSelect.value || buildSeasonLabel(_PLAYER_SEASON_MAX);
+  seasonSelect.innerHTML = "";
+  for (let year = _PLAYER_SEASON_MAX; year >= _SEASON_MIN; year -= 1) {
+    const season = buildSeasonLabel(year);
+    const opt = document.createElement("option");
+    opt.value = season;
+    opt.textContent = season;
+    seasonSelect.appendChild(opt);
+  }
+  if (Array.from(seasonSelect.options).some(o => o.value === current)) {
+    seasonSelect.value = current;
+  }
+
+  // Populate team season selector with the same range.
+  const teamCurrent = teamSeasonSelect.value || buildSeasonLabel(_SEASON_MAX);
+  teamSeasonSelect.innerHTML = "";
+  for (let year = _SEASON_MAX; year >= _SEASON_MIN; year -= 1) {
+    const season = buildSeasonLabel(year);
+    const opt = document.createElement("option");
+    opt.value = season;
+    // For 2025-26 clarify that stats come from 2024-25
+    opt.textContent = year === _SEASON_MAX ? `${season} (stats from ${buildSeasonLabel(year - 1)})` : season;
+    teamSeasonSelect.appendChild(opt);
+  }
+  if (Array.from(teamSeasonSelect.options).some(o => o.value === teamCurrent)) {
+    teamSeasonSelect.value = teamCurrent;
+  }
+}
+
+function dataModeForSeason(season) {
+  const start = Number(String(season || "").slice(0, 4));
+  if (!Number.isFinite(start)) return "Unknown";
+  return start >= 2016 ? "PBP Enhanced" : "Legacy Mode";
+}
+
+function updateDataModeBadge(season) {
+  if (!dataModeBadge) return;
+  dataModeBadge.textContent = dataModeForSeason(season);
+  dataModeBadge.hidden = false;
 }
 
 function safeName(name) {
@@ -390,6 +446,7 @@ async function generatePlayer(playerName) {
     playerNameEl.textContent = data.player_name;
     playerMetaEl.textContent = [data.position, data.team, data.season]
       .filter(Boolean).join(" · ");
+    updateDataModeBadge(data.season || season);
     renderPlayStyles(data);
 
     // Build enriched tendencies map keyed by label for display
@@ -757,18 +814,24 @@ generateTeamBtn.addEventListener("click", async () => {
   }
   const abbr = teamSelect.value;
   if (!abbr) { showError("Please select a team."); return; }
-  const season = seasonSelect.value;
+  const selectedSeason = teamSeasonSelect.value;
+
+  // 2025-26 is the current, unfinished season — use 2024-25 stats with
+  // the 2025-26 roster so rosters are current but stats are reliable.
+  const IS_CURRENT_UNFINISHED = selectedSeason === buildSeasonLabel(_SEASON_MAX);
+  const statsSeason  = IS_CURRENT_UNFINISHED ? buildSeasonLabel(_SEASON_MAX - 1) : selectedSeason;
+  const rosterSeason = selectedSeason;  // always use the selected roster
+
   showSpinner(`Generating ${abbr} roster…`);
 
   try {
-    const rosterSeason = "2025-26";
-    const resp = await apiFetch(`/team/${abbr}?season=${season}&roster_season=${rosterSeason}`);
+    const resp = await apiFetch(`/team/${abbr}?season=${statsSeason}&roster_season=${rosterSeason}`);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(err.detail || `HTTP ${resp.status}`);
     }
     const data = await resp.json();
-    renderTeam(data, season);
+    renderTeam(data, selectedSeason, statsSeason);
     hideSpinner();
     playerResult.hidden = true;
     teamResult.hidden = false;
@@ -779,20 +842,26 @@ generateTeamBtn.addEventListener("click", async () => {
   }
 });
 
-function renderTeam(data, season) {
+function renderTeam(data, season, statsSeason) {
   const generated = Number(data.generated_count ?? data.player_count ?? 0);
   const total = Number(data.total_players ?? data.player_count ?? generated);
-  const rosterSeason = data.roster_season || "2025-26";
-  teamTitle.textContent = `${data.team} — generated ${generated}/${total} · stats ${season} · roster ${rosterSeason}`;
+  const rosterSeason = data.roster_season || season;
+  const _statsSeason = statsSeason || data.season || season;
+  const mode = data.data_mode ? (data.data_mode === "pbp" ? "PBP Enhanced" : "Legacy Mode") : dataModeForSeason(_statsSeason);
+  const statsLabel = _statsSeason !== rosterSeason
+    ? `stats ${_statsSeason} · roster ${rosterSeason}`
+    : `season ${rosterSeason}`;
+  teamTitle.textContent = `${data.team} — generated ${generated}/${total} · ${statsLabel} · ${mode}`;
 
   const abbr = encodeURIComponent(data.team_abbr || data.team);
   const teamExportDiv = document.getElementById("teamExportButtons");
   if (teamExportDiv) {
     const rosterSeasonQuery = encodeURIComponent(rosterSeason);
+    const statsSeasonQuery  = encodeURIComponent(_statsSeason);
     teamExportDiv.innerHTML = `
-      <button class="btn btn-sm" onclick="window.location.href='/export/2k/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📦 Export Team 2K JSON ZIP</button>
-      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Team Excel</button>
-      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}/attributes?season=${season}&roster_season=${rosterSeasonQuery}'">📥 Export Attributes Excel</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/2k/team/${abbr}?season=${statsSeasonQuery}&roster_season=${rosterSeasonQuery}'">📦 Export Team 2K JSON ZIP</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}?season=${statsSeasonQuery}&roster_season=${rosterSeasonQuery}'">📥 Export Team Excel</button>
+      <button class="btn btn-sm" onclick="window.location.href='/export/excel/team/${abbr}/attributes?season=${statsSeasonQuery}&roster_season=${rosterSeasonQuery}'">📥 Export Attributes Excel</button>
     `;
   }
 
@@ -978,5 +1047,11 @@ if (adminUsersBtn) {
     window.location.href = "/admin";
   });
 }
+
+populateSeasonOptions();
+updateDataModeBadge(seasonSelect.value);
+seasonSelect.addEventListener("change", () => {
+  updateDataModeBadge(seasonSelect.value);
+});
 
 loadCurrentUser();
