@@ -97,3 +97,29 @@ class FirebaseFeedbackStore:
             "vote_count": len(values),
             "suggested_values": values,
         }
+
+    def aggregate_for_player(self, player_id: int) -> dict[str, dict[str, Any]]:
+        """Return aggregates for all tendency keys for *player_id* in one query."""
+        entries = self.get_for_player(player_id)
+        by_tendency: dict[str, list[int]] = {}
+        for entry in entries:
+            tendency = str(entry.get("tendency_name", "")).strip()
+            if not tendency:
+                continue
+            try:
+                value = int(entry.get("suggested_value", 0))
+            except (TypeError, ValueError):
+                continue
+            by_tendency.setdefault(tendency, []).append(value)
+
+        out: dict[str, dict[str, Any]] = {}
+        for tendency, values in by_tendency.items():
+            if not values:
+                continue
+            mean = sum(values) / max(1, len(values))
+            out[tendency] = {
+                "mean_value": round(mean, 2),
+                "vote_count": len(values),
+                "suggested_values": values,
+            }
+        return out

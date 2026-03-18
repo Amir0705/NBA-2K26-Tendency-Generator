@@ -119,6 +119,16 @@ def _apply_feedback_learning(player_id: int, result: dict[str, Any]) -> dict[str
         return result
 
     store = _get_feedback_store()
+    per_player_agg: dict[str, dict[str, Any]] = {}
+    aggregate_for_player = getattr(store, "aggregate_for_player", None)
+    if callable(aggregate_for_player):
+        try:
+            fetched = aggregate_for_player(player_id)
+            if isinstance(fetched, dict):
+                per_player_agg = fetched
+        except Exception:  # noqa: BLE001
+            per_player_agg = {}
+
     adjusted: dict[str, int] = {}
     applied_count = 0
     for tendency_key, base_value in tendencies.items():
@@ -128,7 +138,9 @@ def _apply_feedback_learning(player_id: int, result: dict[str, Any]) -> dict[str
             adjusted[tendency_key] = 0
             continue
 
-        agg = store.aggregate(player_id=player_id, tendency_name=tendency_key)
+        agg = per_player_agg.get(tendency_key)
+        if not isinstance(agg, dict):
+            agg = store.aggregate(player_id=player_id, tendency_name=tendency_key)
         votes = int(agg.get("vote_count") or 0)
         mean_value = agg.get("mean_value")
         if votes <= 0 or mean_value is None:
