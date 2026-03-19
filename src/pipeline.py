@@ -396,19 +396,47 @@ class TendencyPipeline:
 
         errors: list[str] = []
 
-        # Step 1: Build features (multi-season weighted blend)
+        # Step 1: Build feature sets
+        # Tendencies default to selected-season features. If sample size is too
+        # small (e.g., injury season), fall back to multi-season blended features.
+        min_gp_for_single_season = int(os.environ.get("N2K_TENDENCY_SINGLE_SEASON_MIN_GP", "15"))
+        tendency_features: dict[str, Any]
+        tendency_feature_mode = "single-season"
         try:
-            features = self._features.build_multiseasonal_features(player_id, s0_season=season)
+            tendency_features = self._features.build_features(player_id, season=season)
+            gp = int(tendency_features.get("gp", tendency_features.get("games_played", 0)) or 0)
+            if gp < min_gp_for_single_season:
+                tendency_features = self._features.build_multiseasonal_features(player_id, s0_season=season)
+                tendency_feature_mode = "multiseason-low-gp"
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"Feature extraction failed: {exc}")
-            features = self._fallback_features(player_id)
+            errors.append(f"Tendency feature extraction failed: {exc}")
+            try:
+                tendency_features = self._features.build_multiseasonal_features(player_id, s0_season=season)
+                tendency_feature_mode = "multiseason-fallback"
+            except Exception as exc2:  # noqa: BLE001
+                errors.append(f"Multi-season tendency fallback failed: {exc2}")
+                tendency_features = self._fallback_features(player_id)
+                tendency_feature_mode = "fallback"
+
+        # Attributes continue to use multi-season blended context.
+        attribute_features: dict[str, Any]
+        attribute_feature_mode = "multiseason"
+        if tendency_feature_mode.startswith("multiseason"):
+            attribute_features = tendency_features
+        else:
+            try:
+                attribute_features = self._features.build_multiseasonal_features(player_id, s0_season=season)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Attribute feature extraction failed: {exc}")
+                attribute_features = tendency_features
+                attribute_feature_mode = "tendency-fallback"
 
         # Step 2: Apply formula (or hybrid formula+ML)
         try:
             combiner = getattr(self, "_combiner", None)
             formula_raw = (
-                combiner.combine(features) if combiner is not None
-                else self._formula.generate(features)
+                combiner.combine(tendency_features) if combiner is not None
+                else self._formula.generate(tendency_features)
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Formula error: {exc}")
@@ -515,7 +543,7 @@ class TendencyPipeline:
 
         # Step 6: Gather player info
         player_name = ""
-        position = features.get("position", "")
+        position = tendency_features.get("position", "")
         try:
             info = self._client.get_player_info(player_id)
             # Try to get name from search (not ideal but works)
@@ -527,9 +555,9 @@ class TendencyPipeline:
         play_style_weights: dict[str, float] = {}
         play_style_scores: dict[str, float] = {}
         play_style_count = 0
-        play_style_usage_rate = float(features.get("usg_pct_proxy", 0.18)) * 100.0
+        play_style_usage_rate = float(tendency_features.get("usg_pct_proxy", 0.18)) * 100.0
         try:
-            style_result = self._play_styles.score(features, tendencies=capped)
+            style_result = self._play_styles.score(tendency_features, tendencies=capped)
             play_style_priorities = style_result.priorities
             play_style_weights = style_result.weights
             play_style_scores = style_result.scores
@@ -541,7 +569,7 @@ class TendencyPipeline:
         # Step 8: Attribute ratings
         attributes: dict[str, int] = {}
         try:
-            attributes = self._attributes.calculate(features, capped)
+            attributes = self._attributes.calculate(attribute_features, capped)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Attribute calculation error: {exc}")
 
@@ -560,9 +588,13 @@ class TendencyPipeline:
             "play_style_priorities": play_style_priorities,
             "play_style_weights": play_style_weights,
             "play_style_scores": play_style_scores,
+            "feature_modes": {
+                "tendencies": tendency_feature_mode,
+                "attributes": attribute_feature_mode,
+            },
             "features": {
                 k: v
-                for k, v in features.items()
+                for k, v in tendency_features.items()
                 if not isinstance(v, dict)
             },
         }
