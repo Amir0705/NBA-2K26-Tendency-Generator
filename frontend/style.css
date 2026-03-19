@@ -942,6 +942,150 @@ footer {
   }
 }
 
+/* ===== Team Roster Grid (Phase 2) ===== */
+.team-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.team-roster-card {
+  background: linear-gradient(155deg, rgba(23, 27, 38, 0.8) 0%, rgba(17, 21, 31, 0.75) 100%);
+  border: 1.5px solid rgba(255, 107, 45, 0.2);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.team-roster-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 107, 45, 0.1) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.team-roster-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(255, 107, 45, 0.5);
+  box-shadow: 0 12px 32px rgba(255, 107, 45, 0.25);
+}
+
+.team-roster-card:hover::before {
+  opacity: 1;
+}
+
+.team-roster-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.team-roster-card-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.team-roster-card-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.team-roster-card-ovr {
+  background: linear-gradient(135deg, var(--accent) 0%, #ff8945 100%);
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 800;
+  padding: 8px 12px;
+  border-radius: 10px;
+  min-width: 50px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(255, 107, 45, 0.3);
+}
+
+.team-roster-card-summaries {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.team-roster-summary-badge {
+  background: rgba(15, 52, 96, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.team-roster-summary-badge:hover {
+  background: rgba(15, 52, 96, 0.45);
+  transform: scale(1.05);
+}
+
+.team-roster-summary-label {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-bottom: 3px;
+  letter-spacing: 0.3px;
+}
+
+.team-roster-summary-grade {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--gold);
+  font-family: "Bebas Neue", sans-serif;
+}
+
+.team-roster-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.team-roster-card-actions button {
+  flex: 1;
+  font-size: 0.7rem;
+  padding: 6px 8px;
+}
+
+.team-expanded-player {
+  margin-top: 24px;
+  padding: 20px;
+  background: rgba(15, 52, 96, 0.1);
+  border: 1px solid rgba(255, 107, 45, 0.3);
+  border-radius: 14px;
+}
+
+.team-expanded-player[hidden] {
+  display: none;
+}
+
+#teamExpandedContent {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .header-content h1 { font-size: 1.4rem; }

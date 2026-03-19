@@ -209,7 +209,18 @@
     <section id="teamResult" class="card" hidden>
       <h2 id="teamTitle" class="team-title"></h2>
       <div id="teamExportButtons" class="team-export-buttons"></div>
-      <div id="teamAccordion"></div>
+      
+      <!-- Team Roster Card Grid (Phase 2) -->
+      <div id="teamRosterGrid" class="team-roster-grid"></div>
+
+      <!-- Expanded Player Detail (when card clicked) -->
+      <div id="teamExpandedPlayerDetail" class="team-expanded-player" hidden>
+        <button id="teamCloseExpandedBtn" class="btn btn-sm" style="margin-bottom: 16px;">← Back to Roster</button>
+        <div id="teamExpandedContent"></div>
+      </div>
+
+      <!-- Legacy Accordion fallback (hidden by default) -->
+      <div id="teamAccordion" hidden></div>
     </section>
   </main>
 

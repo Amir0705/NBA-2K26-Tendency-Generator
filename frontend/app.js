@@ -87,6 +87,10 @@ const errorBanner     = document.getElementById("errorBanner");
 const teamResult      = document.getElementById("teamResult");
 const teamTitle       = document.getElementById("teamTitle");
 const teamAccordion   = document.getElementById("teamAccordion");
+const teamRosterGrid  = document.getElementById("teamRosterGrid");
+const teamExpandedPlayerDetail = document.getElementById("teamExpandedPlayerDetail");
+const teamExpandedContent = document.getElementById("teamExpandedContent");
+const teamCloseExpandedBtn = document.getElementById("teamCloseExpandedBtn");
 const dl2kJsonBtn     = document.getElementById("dl2kJsonBtn");
 const dlExcelBtn      = document.getElementById("dlExcelBtn");
 const toggleDebugBtn  = document.getElementById("toggleDebugBtn");
@@ -1089,44 +1093,192 @@ function renderTeam(data, season, statsSeason) {
     `;
   }
 
-  teamAccordion.innerHTML = data.players.map((player, idx) => {
-    const enriched = {};
-    for (const [key, entry] of Object.entries(player.tendencies)) {
-      enriched[key] = { label: entry.label, value: entry.value, category: guessCategoryFromKey(key) };
-    }
-    const tendencyRows = buildTendencyRowsHtml(enriched);
-    const encodedName = encodeURIComponent(player.player_name);
-    const playStylesHtml = buildPlayStylesHtml(
-      player.play_style_priorities || [],
-      player.play_style_weights || {},
-      player.play_style_usage_rate,
-    );
-    return `
-      <div class="accordion-item" id="acc-${idx}">
-        <div class="accordion-header" onclick="toggleAccordion(${idx})">
-          <div>
-            <span class="accordion-player-name">${player.player_name}</span>
-            <span class="accordion-meta">${player.position || ""}</span>
-          </div>
-          <i class="accordion-chevron">▼</i>
-        </div>
-        <div class="accordion-body">
-          <div class="accordion-export">
-            <button class="btn btn-sm" onclick="window.location.href='/export/2k/${encodedName}?season=${season}'">📥 2K JSON</button>
-            <button class="btn btn-sm" onclick="window.location.href='/export/excel/${encodedName}?season=${season}'">📥 Excel</button>
-          </div>
-          <div class="playstyles-block">
-            <div class="playstyles-title">Play Style Priorities</div>
-            ${playStylesHtml}
-          </div>
-          <div id="acc-body-${idx}">${tendencyRows}</div>
-        </div>
-      </div>`;
-  }).join("");
+  // Phase 2: Render team roster card grid
+  renderTeamRosterGrid(data, season, rosterSeason);
 
   // Store team data for JSON copy
   window._teamData = data;
 }
+
+function renderTeamRosterGrid(data, season, rosterSeason) {
+  // Reset expanded view
+  teamExpandedPlayerDetail.hidden = true;
+  
+  // Render card grid
+  teamRosterGrid.innerHTML = data.players.map((player, idx) => {
+    const allAttrs = Object.values(player.attributes || {});
+    const ovrValue = allAttrs.length > 0
+      ? Math.round(allAttrs.reduce((sum, a) => sum + a.value, 0) / allAttrs.length)
+      : 75;
+    
+    const grades = calculateSummaryGrades(player.tendencies || {}, player.attributes || {});
+    const encodedName = encodeURIComponent(player.player_name);
+    
+    return `
+      <div class="team-roster-card" onclick="expandTeamPlayer(${idx}, event)">
+        <div class="team-roster-card-header">
+          <div>
+            <div class="team-roster-card-name">${player.player_name}</div>
+            <div class="team-roster-card-meta">${player.position || ""}</div>
+          </div>
+          <div class="team-roster-card-ovr">${ovrValue}</div>
+        </div>
+        
+        <div class="team-roster-card-summaries">
+          <div class="team-roster-summary-badge">
+            <span class="team-roster-summary-label">OFF</span>
+            <span class="team-roster-summary-grade">${grades.offense}</span>
+          </div>
+          <div class="team-roster-summary-badge">
+            <span class="team-roster-summary-label">DEF</span>
+            <span class="team-roster-summary-grade">${grades.defense}</span>
+          </div>
+          <div class="team-roster-summary-badge">
+            <span class="team-roster-summary-label">PHY</span>
+            <span class="team-roster-summary-grade">${grades.physicals}</span>
+          </div>
+        </div>
+        
+        <div class="team-roster-card-actions">
+          <button class="btn btn-sm" onclick="window.location.href='/export/2k/${encodedName}?season=${season}'; event.stopPropagation();">2K JSON</button>
+          <button class="btn btn-sm" onclick="window.location.href='/export/excel/${encodedName}?season=${season}'; event.stopPropagation();">Excel</button>
+        </div>
+      </div>`;
+  }).join("");
+  
+  // Store players data for expanded view
+  window._teamRosterData = data.players;
+  window._teamSeason = season;
+  window._teamRosterSeason = rosterSeason;
+}
+
+function expandTeamPlayer(playerIdx, event) {
+  event.stopPropagation();
+  const player = window._teamRosterData[playerIdx];
+  if (!player) return;
+  
+  // Build the expanded profile content
+  const allAttrs = Object.values(player.attributes || {});
+  const ovrValue = allAttrs.length > 0
+    ? Math.round(allAttrs.reduce((sum, a) => sum + a.value, 0) / allAttrs.length)
+    : 75;
+  
+  const grades = calculateSummaryGrades(player.tendencies || {}, player.attributes || {});
+  
+  // Build enriched tendencies
+  const enrichedTendencies = {};
+  for (const [key, entry] of Object.entries(player.tendencies || {})) {
+    enrichedTendencies[key] = {
+      label: entry.label,
+      value: entry.value,
+      category: guessCategoryFromKey(key),
+    };
+  }
+  
+  // Render profile header
+  const headerHtml = `
+    <div class="profile-card-header">
+      <div class="profile-card-info">
+        <div class="profile-card-name">${player.player_name}</div>
+        <div class="profile-card-meta">${[player.position, player.team, window._teamSeason].filter(Boolean).join(" · ")}</div>
+      </div>
+      <div class="profile-card-ovr">${ovrValue}</div>
+    </div>
+    
+    <div class="profile-card-summaries">
+      <div class="summary-badge">
+        <div class="summary-badge-label">Offense</div>
+        <div class="summary-badge-grade">${grades.offense}</div>
+      </div>
+      <div class="summary-badge">
+        <div class="summary-badge-label">Defense</div>
+        <div class="summary-badge-grade">${grades.defense}</div>
+      </div>
+      <div class="summary-badge">
+        <div class="summary-badge-label">Physicals</div>
+        <div class="summary-badge-grade">${grades.physicals}</div>
+      </div>
+    </div>
+    
+    <div class="profile-card-stats">
+      <div class="stat-item">
+        <span class="stat-label">GPG</span>
+        <span class="stat-value">${player.gp || "N/A"}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">MIN</span>
+        <span class="stat-value">${player.mpg ? player.mpg.toFixed(1) : "N/A"}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">PPG</span>
+        <span class="stat-value">${player.ppg ? player.ppg.toFixed(1) : "N/A"}</span>
+      </div>
+    </div>
+    
+    <div class="profile-card-actions">
+      <button class="btn btn-sm btn-action" id="teamExpandTendenciesBtn">View Tendencies</button>
+      <button class="btn btn-sm btn-action" id="teamExpandAttributesBtn">View Attributes</button>
+    </div>
+    
+    <div id="teamExpandTendenciesPanel" class="collapsible-panel" hidden>
+      <div class="collapsible-header">
+        <span class="collapsible-title">Tendencies</span>
+        <span class="collapsible-toggle">▼</span>
+      </div>
+      <div class="collapsible-content">${renderTendenciesToHtml(enrichedTendencies)}</div>
+    </div>
+    
+    <div id="teamExpandAttributesPanel" class="collapsible-panel" hidden>
+      <div class="collapsible-header">
+        <span class="collapsible-title">Attributes</span>
+        <span class="collapsible-toggle">▼</span>
+      </div>
+      <div class="collapsible-content">${renderAttributesToHtml(player.attributes || {})}</div>
+    </div>
+  `;
+  
+  teamExpandedContent.innerHTML = headerHtml;
+  teamExpandedPlayerDetail.hidden = false;
+  
+  // Scroll into view
+  window.scrollTo(0, 0);
+  
+  // Set up collapsible headers
+  const expandHeaders = teamExpandedContent.querySelectorAll(".collapsible-header");
+  expandHeaders.forEach(header => {
+    header.addEventListener("click", () => {
+      const panel = header.closest(".collapsible-panel");
+      panel.classList.toggle("open");
+    });
+  });
+  
+  // Set up action buttons
+  const tendenciesBtn = document.getElementById("teamExpandTendenciesBtn");
+  const attributesBtn = document.getElementById("teamExpandAttributesBtn");
+  const tendenciesPanel = document.getElementById("teamExpandTendenciesPanel");
+  const attributesPanel = document.getElementById("teamExpandAttributesPanel");
+  
+  if (tendenciesBtn) tendenciesBtn.addEventListener("click", () => {
+    tendenciesPanel.classList.remove("hidden");
+    tendenciesPanel.classList.add("open");
+    attributesPanel.classList.add("hidden");
+    attributesPanel.classList.remove("open");
+  });
+  
+  if (attributesBtn) attributesBtn.addEventListener("click", () => {
+    attributesPanel.classList.remove("hidden");
+    attributesPanel.classList.add("open");
+    tendenciesPanel.classList.add("hidden");
+    tendenciesPanel.classList.remove("open");
+  });
+}
+
+// Close expanded player detail
+teamCloseExpandedBtn.addEventListener("click", () => {
+  teamExpandedPlayerDetail.hidden = true;
+  document.getElementById("teamRosterGrid").scrollIntoView({ behavior: "smooth" });
+});
+
 
 function buildTendencyRowsHtml(enriched) {
   const byCategory = {};
