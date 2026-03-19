@@ -125,6 +125,47 @@
           <button class="btn btn-sm" id="toggleDebugBtn">🛠 Debug</button>
         </div>
       </div>
+
+      <!-- Profile Card (Phase 1) -->
+      <div id="profileCard" class="profile-card">
+        <div class="profile-card-header">
+          <div class="profile-card-info">
+            <div id="profileCardName" class="profile-card-name"></div>
+            <div id="profileCardMeta" class="profile-card-meta"></div>
+          </div>
+          <div id="profileCardOVR" class="profile-card-ovr"></div>
+        </div>
+        
+        <div class="profile-card-summaries">
+          <div class="summary-badge" id="profileOffenseBadge"></div>
+          <div class="summary-badge" id="profileDefenseBadge"></div>
+          <div class="summary-badge" id="profilePhysicalsBadge"></div>
+        </div>
+
+        <div class="profile-card-stats" id="profileCardStats"></div>
+
+        <div class="profile-card-actions">
+          <button class="btn btn-sm btn-action" id="profileViewTendenciesBtn">View Tendencies</button>
+          <button class="btn btn-sm btn-action" id="profileViewAttributesBtn">View Attributes</button>
+        </div>
+
+        <div id="profileTendenciesPanel" class="collapsible-panel" hidden>
+          <div class="collapsible-header">
+            <span class="collapsible-title">Tendencies</span>
+            <span class="collapsible-toggle">▼</span>
+          </div>
+          <div class="collapsible-content" id="profileTendenciesContent"></div>
+        </div>
+
+        <div id="profileAttributesPanel" class="collapsible-panel" hidden>
+          <div class="collapsible-header">
+            <span class="collapsible-title">Attributes</span>
+            <span class="collapsible-toggle">▼</span>
+          </div>
+          <div class="collapsible-content" id="profileAttributesContent"></div>
+        </div>
+      </div>
+
       <div class="compare-controls compare-inline">
         <div class="search-wrap compare-wrap">
           <input type="text" id="comparePlayerSearch" class="input" placeholder="Compare with player…" autocomplete="off" />

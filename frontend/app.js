@@ -105,6 +105,20 @@ const editorFeedbackSection = document.getElementById("editorFeedbackSection");
 const editorFeedbackNotes = document.getElementById("editorFeedbackNotes");
 const saveFeedbackBtn = document.getElementById("saveFeedbackBtn");
 const editorFeedbackStatus = document.getElementById("editorFeedbackStatus");
+const profileCard = document.getElementById("profileCard");
+const profileCardName = document.getElementById("profileCardName");
+const profileCardMeta = document.getElementById("profileCardMeta");
+const profileCardOVR = document.getElementById("profileCardOVR");
+const profileCardStats = document.getElementById("profileCardStats");
+const profileOffenseBadge = document.getElementById("profileOffenseBadge");
+const profileDefenseBadge = document.getElementById("profileDefenseBadge");
+const profilePhysicalsBadge = document.getElementById("profilePhysicalsBadge");
+const profileViewTendenciesBtn = document.getElementById("profileViewTendenciesBtn");
+const profileViewAttributesBtn = document.getElementById("profileViewAttributesBtn");
+const profileTendenciesPanel = document.getElementById("profileTendenciesPanel");
+const profileAttributesPanel = document.getElementById("profileAttributesPanel");
+const profileTendenciesContent = document.getElementById("profileTendenciesContent");
+const profileAttributesContent = document.getElementById("profileAttributesContent");
 
 function canEditTendencies() {
   if (!_authUser) return false;
@@ -458,6 +472,10 @@ async function generatePlayer(playerName) {
       enriched[key] = { label: entry.label, value: entry.value, category: guessCategoryFromKey(key) };
     }
 
+    // Render Phase 1 profile card
+    renderProfileCard(data);
+    initializeCollapsiblePanels(data);
+
     renderTendencies(enriched);
     renderAttributes(data.attributes || {});
     viewToggle.hidden = false;
@@ -514,6 +532,212 @@ function guessCategoryFromKey(key) {
       k.includes("baseline") || k.includes("elbow") || k.includes("top") ||
       k.includes("short")) return "sub_zone";
   return "core";
+}
+
+// ── Profile Card Rendering ─────────────────────────────────────────────────
+function calculateSummaryGrades(tendencies, attributes) {
+  // Calculate Offense grade based on shooting and driving tendencies
+  const offenseKeys = Object.keys(tendencies).filter(k => {
+    const cat = guessCategoryFromKey(k);
+    return cat === "shooting" || cat === "driving" || cat === "finishing";
+  });
+  const offenseAvg = offenseKeys.length > 0
+    ? offenseKeys.reduce((sum, k) => sum + (tendencies[k]?.value || 0), 0) / offenseKeys.length
+    : 50;
+
+  // Calculate Defense grade based on defense tendencies
+  const defenseKeys = Object.keys(tendencies).filter(k => guessCategoryFromKey(k) === "defense");
+  const defenseAvg = defenseKeys.length > 0
+    ? defenseKeys.reduce((sum, k) => sum + (tendencies[k]?.value || 0), 0) / defenseKeys.length
+    : 50;
+
+  // Calculate Physicals grade based on physical attributes
+  const physicalAttrs = Object.values(attributes).filter(a => a.category === "physical");
+  const physicalAvg = physicalAttrs.length > 0
+    ? physicalAttrs.reduce((sum, a) => sum + a.value, 0) / physicalAttrs.length
+    : 50;
+
+  const getGrade = (value) => {
+    if (value >= 85) return "S";
+    if (value >= 80) return "A+";
+    if (value >= 75) return "A";
+    if (value >= 70) return "B+";
+    if (value >= 60) return "B";
+    return "C+";
+  };
+
+  return {
+    offense: getGrade(offenseAvg),
+    defense: getGrade(defenseAvg),
+    physicals: getGrade(physicalAvg),
+  };
+}
+
+function getProductionStats(playerData) {
+  // Extract sample production stats from player data if available
+  // These would typically come from the API response or season data
+  const stats = {
+    ppg: playerData.ppg || "N/A",
+    apg: playerData.apg || "N/A",
+    rpg: playerData.rpg || "N/A",
+  };
+  return stats;
+}
+
+function renderProfileCard(playerData) {
+  // Render profile card header
+  profileCardName.textContent = playerData.player_name || "Unknown";
+  const metaParts = [playerData.position, playerData.team, playerData.season].filter(Boolean);
+  profileCardMeta.textContent = metaParts.join(" · ");
+
+  // Calculate OVR (average of all attributes or from data)
+  const allAttrs = Object.values(playerData.attributes || {});
+  const ovrValue = allAttrs.length > 0
+    ? Math.round(allAttrs.reduce((sum, a) => sum + a.value, 0) / allAttrs.length)
+    : 75;
+  profileCardOVR.textContent = ovrValue;
+
+  // Render summary badges
+  const grades = calculateSummaryGrades(playerData.tendencies || {}, playerData.attributes || {});
+  [
+    { badge: profileOffenseBadge, label: "Offense", grade: grades.offense },
+    { badge: profileDefenseBadge, label: "Defense", grade: grades.defense },
+    { badge: profilePhysicalsBadge, label: "Physicals", grade: grades.physicals },
+  ].forEach(({ badge, label, grade }) => {
+    badge.innerHTML = `
+      <div class="summary-badge-label">${label}</div>
+      <div class="summary-badge-grade">${grade}</div>
+    `;
+  });
+
+  // Render stats strip
+  const stats = getProductionStats(playerData);
+  profileCardStats.innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">PPG</span>
+      <span class="stat-value">${stats.ppg}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">APG</span>
+      <span class="stat-value">${stats.apg}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">RPG</span>
+      <span class="stat-value">${stats.rpg}</span>
+    </div>
+  `;
+}
+
+function initializeCollapsiblePanels(playerData) {
+  // Set up event listeners for collapsible panels
+  const headers = document.querySelectorAll(".collapsible-header");
+  headers.forEach(header => {
+    header.addEventListener("click", () => {
+      const panel = header.closest(".collapsible-panel");
+      panel.classList.toggle("open");
+    });
+  });
+
+  // Populate tendencies content
+  const enrichedTendencies = {};
+  for (const [key, entry] of Object.entries(playerData.tendencies || {})) {
+    enrichedTendencies[key] = {
+      label: entry.label,
+      value: entry.value,
+      category: guessCategoryFromKey(key),
+    };
+  }
+  const tendenciesHtml = renderTendenciesToHtml(enrichedTendencies);
+  profileTendenciesContent.innerHTML = tendenciesHtml;
+
+  // Populate attributes content
+  const attributesHtml = renderAttributesToHtml(playerData.attributes || {});
+  profileAttributesContent.innerHTML = attributesHtml;
+
+  // Button handlers
+  profileViewTendenciesBtn.addEventListener("click", () => {
+    profileTendenciesPanel.classList.remove("hidden");
+    profileTendenciesPanel.classList.add("open");
+    profileAttributesPanel.classList.add("hidden");
+    profileAttributesPanel.classList.remove("open");
+  });
+
+  profileViewAttributesBtn.addEventListener("click", () => {
+    profileAttributesPanel.classList.remove("hidden");
+    profileAttributesPanel.classList.add("open");
+    profileTendenciesPanel.classList.add("hidden");
+    profileTendenciesPanel.classList.remove("open");
+  });
+}
+
+// Helper to render tendencies as HTML for profile card
+function renderTendenciesToHtml(tendenciesObj) {
+  const byCategory = {};
+  for (const [key, entry] of Object.entries(tendenciesObj)) {
+    const cat = entry.category || "core";
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push({ key, label: entry.label, value: entry.value });
+  }
+
+  const orderedCats = [
+    ...CATEGORY_ORDER.filter(c => byCategory[c]),
+    ...Object.keys(byCategory).filter(c => !CATEGORY_ORDER.includes(c)),
+  ];
+
+  return orderedCats.map(cat => {
+    const rows = byCategory[cat].map(t => `
+      <div class="tendency-row">
+        <span class="tendency-label" title="${t.label}">${t.label}</span>
+        <div class="bar-track">
+          <div class="bar-fill ${barClass(t.value)}" style="width:${t.value}%"></div>
+        </div>
+        <span class="tendency-value">${t.value}</span>
+      </div>
+    `).join("");
+    return `
+      <div class="category-section">
+        <div class="category-title">${CATEGORY_LABELS[cat] || cat}</div>
+        ${rows}
+      </div>`;
+  }).join("");
+}
+
+// Helper to render attributes as HTML for profile card
+function renderAttributesToHtml(attrsObj) {
+  if (!attrsObj || !Object.keys(attrsObj).length) {
+    return '<div class="playstyles-empty">No attribute data available.</div>';
+  }
+  const byCategory = {};
+  for (const [key, entry] of Object.entries(attrsObj)) {
+    const cat = entry.category || "meta";
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push({ key, label: entry.label || key, value: entry.value });
+  }
+
+  const orderedCats = [
+    ...ATTR_CATEGORY_ORDER.filter(c => byCategory[c]),
+    ...Object.keys(byCategory).filter(c => !ATTR_CATEGORY_ORDER.includes(c)),
+  ];
+
+  return orderedCats.map(cat => {
+    const rows = byCategory[cat].map(a => {
+      const pct = Math.round(((a.value - 25) / 74) * 100);
+      const tier = attrTier(a.value);
+      return `
+        <div class="tendency-row">
+          <span class="tendency-label" title="${a.label}">${a.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill ${tier === "elite" ? "high" : tier === "good" ? "high" : tier === "average" ? "med" : "low"}" style="width:${pct}%"></div>
+          </div>
+          <span class="attr-value ${tier}">${a.value}</span>
+        </div>`;
+    }).join("");
+    return `
+      <div class="category-section">
+        <div class="category-title">${ATTR_CATEGORY_LABELS[cat] || cat}</div>
+        ${rows}
+      </div>`;
+  }).join("");
 }
 
 // ── Export helpers ─────────────────────────────────────────────────────────

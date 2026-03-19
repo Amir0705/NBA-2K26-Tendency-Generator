@@ -740,6 +740,208 @@ footer {
 .attr-value.average { background: rgba(243, 156, 18, 0.25); color: #f39c12; }
 .attr-value.poor    { background: rgba(231, 76, 60, 0.25); color: #e74c3c; }
 
+/* ===== Profile Card (Phase 1) ===== */
+.profile-card {
+  background: linear-gradient(155deg, rgba(23, 27, 38, 0.8) 0%, rgba(17, 21, 31, 0.75) 100%);
+  border: 2px solid rgba(255, 107, 45, 0.25);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.profile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.profile-card-info {
+  flex: 1;
+}
+
+.profile-card-name {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.profile-card-meta {
+  font-size: 0.95rem;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-card-ovr {
+  background: linear-gradient(135deg, var(--accent) 0%, #ff8945 100%);
+  color: #fff;
+  font-size: 2.2rem;
+  font-weight: 800;
+  padding: 16px 24px;
+  border-radius: 14px;
+  text-align: center;
+  min-width: 100px;
+  box-shadow: 0 8px 24px rgba(255, 107, 45, 0.3);
+  letter-spacing: 1px;
+}
+
+.profile-card-summaries {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-badge {
+  background: rgba(15, 52, 96, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.summary-badge:hover {
+  background: rgba(15, 52, 96, 0.5);
+  transform: translateY(-2px);
+}
+
+.summary-badge-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.summary-badge-grade {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--gold);
+  font-family: "Bebas Neue", sans-serif;
+  letter-spacing: 2px;
+}
+
+.profile-card-stats {
+  background: rgba(15, 52, 96, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 14px;
+  font-size: 0.85rem;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-label {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.4px;
+}
+
+.stat-value {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 1.3rem;
+}
+
+.profile-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.btn-action {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(42, 127, 255, 0.3) 0%, rgba(42, 127, 255, 0.15) 100%);
+  border: 1px solid rgba(42, 127, 255, 0.4);
+  color: #7fb3ff;
+}
+
+.btn-action:hover {
+  background: linear-gradient(135deg, rgba(42, 127, 255, 0.5) 0%, rgba(42, 127, 255, 0.3) 100%);
+  border-color: rgba(42, 127, 255, 0.6);
+  color: #b8d4ff;
+}
+
+.collapsible-panel {
+  margin-bottom: 12px;
+  background: rgba(15, 52, 96, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.collapsible-panel[hidden] {
+  display: none;
+}
+
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: rgba(15, 52, 96, 0.25);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.collapsible-header:hover {
+  background: rgba(15, 52, 96, 0.4);
+}
+
+.collapsible-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffb997;
+  letter-spacing: 0.5px;
+}
+
+.collapsible-toggle {
+  color: var(--muted);
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.collapsible-panel.open .collapsible-toggle {
+  transform: rotate(180deg);
+}
+
+.collapsible-content {
+  padding: 16px;
+  display: none;
+  animation: slideDown 0.2s ease;
+}
+
+.collapsible-panel.open .collapsible-content {
+  display: block;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 1000px;
+  }
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
   .header-content h1 { font-size: 1.4rem; }
