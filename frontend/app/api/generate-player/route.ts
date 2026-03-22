@@ -45,7 +45,7 @@ const DISABLE_RESPONSE_CACHE = true;
 const BACKEND_REQUEST_TIMEOUT_MS = 12_000;
 const GENERATION_MODE = process.env.N2K_GENERATION_MODE ?? "supabase";
 const ENABLE_LOCAL_FALLBACK = process.env.N2K_ALLOW_LOCAL_FALLBACK === "1";
-const ALLOW_LEGACY_TS_ATTRIBUTE_FALLBACK = process.env.N2K_ALLOW_LEGACY_TS_ATTRIBUTE_FALLBACK === "1";
+const ALLOW_LEGACY_TS_ATTRIBUTE_FALLBACK = process.env.N2K_ALLOW_LEGACY_TS_ATTRIBUTE_FALLBACK !== "0";
 const execFileAsync = promisify(execFile);
 
 type PythonAttributePayload = {
@@ -841,23 +841,33 @@ async function calculateSupabaseAttributesWithPython(playerId: string, season: n
   if (!fs.existsSync(scriptPath)) return null;
 
   const seasonStart = String(Number.isInteger(season) ? season : STATS_CARD_SEASON);
-  const pythonExe = process.env.N2K_PYTHON_EXECUTABLE
-    || path.join(repoRoot, ".venv", "Scripts", "python.exe");
+  const candidates = [
+    process.env.N2K_PYTHON_EXECUTABLE,
+    process.platform === "win32"
+      ? path.join(repoRoot, ".venv", "Scripts", "python.exe")
+      : path.join(repoRoot, ".venv", "bin", "python"),
+    "python3",
+    "python",
+  ].filter((value): value is string => Boolean(value && value.trim()));
 
-  try {
-    const { stdout } = await execFileAsync(pythonExe, [scriptPath, String(playerId), seasonStart], {
-      cwd: repoRoot,
-      timeout: 15_000,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-    });
+  for (const pythonExe of candidates) {
+    try {
+      const { stdout } = await execFileAsync(pythonExe, [scriptPath, String(playerId), seasonStart], {
+        cwd: repoRoot,
+        timeout: 15_000,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+      });
 
-    const parsed = JSON.parse(String(stdout || "{}")) as PythonAttributePayload;
-    if (!parsed || !parsed.attributes || !parsed.attributeGroups) return null;
-    return parsed;
-  } catch {
-    return null;
+      const parsed = JSON.parse(String(stdout || "{}")) as PythonAttributePayload;
+      if (!parsed || !parsed.attributes || !parsed.attributeGroups) continue;
+      return parsed;
+    } catch {
+      // Try next candidate executable.
+    }
   }
+
+  return null;
 }
 
 export async function POST(request: NextRequest) {
