@@ -1,6 +1,7 @@
 """Top-level tendency generation pipeline."""
 from __future__ import annotations
 
+import csv
 import json
 import os
 from typing import Any
@@ -317,6 +318,16 @@ def load_registry(registry_path: str) -> list[dict[str, Any]]:
         return json.load(fh)
 
 
+def _normalize_player_name(name: str) -> str:
+    cleaned = str(name or "").upper().strip()
+    cleaned = cleaned.replace(".", "")
+    cleaned = cleaned.replace(" JR", "")
+    cleaned = cleaned.replace(" SR", "")
+    cleaned = cleaned.replace(" III", "")
+    cleaned = cleaned.replace(" II", "")
+    return " ".join(cleaned.split())
+
+
 class TendencyPipeline:
     """Wires together the full NBA 2K26 tendency generation pipeline."""
 
@@ -355,6 +366,35 @@ class TendencyPipeline:
             os.path.dirname(__file__), "..", "models", "attributes"
         )
         self._attr_predictor = AttributePredictor(model_dir=attr_model_dir)
+        self._potential_targets = self._load_potential_targets()
+
+    def _load_potential_targets(self) -> dict[str, int]:
+        csv_candidates = [
+            os.environ.get("N2K_POTENTIAL_CSV_PATH", "").strip(),
+            os.path.join(os.path.expanduser("~"), "Downloads", "player_potentials.csv"),
+            os.path.join(os.getcwd(), "player_potentials.csv"),
+        ]
+        csv_path = next((p for p in csv_candidates if p and os.path.exists(p)), "")
+        if not csv_path:
+            return {}
+
+        out: dict[str, int] = {}
+        try:
+            with open(csv_path, "r", encoding="utf-8-sig", newline="") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    name = _normalize_player_name(str(row.get("Player Name", "")))
+                    if not name:
+                        continue
+                    try:
+                        value = int(round(float(row.get("Potential", "0") or 0)))
+                    except (TypeError, ValueError):
+                        continue
+                    out[name] = max(25, min(99, value))
+        except Exception:  # noqa: BLE001
+            return {}
+
+        return out
 
     def generate(self, player_id: int | str, season: str = "2024-25") -> dict[str, Any]:
         """
@@ -546,9 +586,16 @@ class TendencyPipeline:
         position = tendency_features.get("position", "")
         try:
             info = self._client.get_player_info(player_id)
-            # Try to get name from search (not ideal but works)
+            player_name = str(info.get("full_name", "") or "")
         except Exception:  # noqa: BLE001
             info = {}
+
+        potential_target = None
+        if player_name and self._potential_targets:
+            potential_target = self._potential_targets.get(_normalize_player_name(player_name))
+            if potential_target is not None:
+                attribute_features = dict(attribute_features)
+                attribute_features["potential_target"] = potential_target
 
         # Step 7: Play-style priority selection (tendency-informed)
         play_style_priorities: list[str] = []
@@ -588,6 +635,7 @@ class TendencyPipeline:
             "play_style_priorities": play_style_priorities,
             "play_style_weights": play_style_weights,
             "play_style_scores": play_style_scores,
+            "potential_target": potential_target,
             "feature_modes": {
                 "tendencies": tendency_feature_mode,
                 "attributes": attribute_feature_mode,

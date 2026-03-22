@@ -13,6 +13,15 @@ venv/
 models/
 output/
 
+# Frontend generated/dependency artifacts
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+
+# Test/build caches
+.pytest_cache/
+.mypy_cache/
+
 # Local ad-hoc helper/output files
 _tmp*.py
 tmp_*.py

@@ -1,9 +1,9 @@
-"""Ingest per-game + advanced box scores for all seasons (2000-01 → 2024-25).
+"""Ingest per-game + advanced box scores for all seasons (2000-01 → 2025-26).
 
 Source: nba_api  LeagueDashPlayerStats  (PerGame  +  Advanced)
 Output: player_seasons table  +  player_info  (name/position only — bios come later)
 
-One API call pair per season = 50 total network requests for 25 seasons.
+One API call pair per season = 52 total network requests for 26 seasons.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from scripts.ingest.db import (
 _RATE_LIMIT = 0.7
 
 MIN_START_YEAR = 2000
-MAX_START_YEAR = 2024   # 2024-25 is the latest complete season
+MAX_START_YEAR = 2025   # 2025-26 season currently available for basic stats ingest
 
 
 def _season(year: int) -> str:

@@ -26,6 +26,8 @@ PLAY_STYLE_NAMES: tuple[str, ...] = (
 )
 
 _EXCLUSIVITY_GROUP_BY_STYLE = {
+    "Handoff pass": "handoff_role",
+    "Handoff receiver": "handoff_role",
     "Pick and roll rollman": "pnr_role",
     "Pick and roll wing": "pnr_role",
     "Pick and roll point": "pnr_role",
@@ -71,6 +73,11 @@ class PlayStyleScorer:
         pbp_data_available = self._to_float(features.get("pbp_data_available", 0.0)) > 0.0
         height_inches = self._to_float(features.get("height_inches", 78.0))
         weight_lbs = self._to_float(features.get("weight_lbs", 220.0))
+
+        # Normalize percent-like fields that may arrive as 0-1 ratios in some paths.
+        assisted_2pt_pct = self._as_percent(assisted_2pt_pct)
+        assisted_3pt_pct = self._as_percent(assisted_3pt_pct)
+        live_ball_turnover_pct = self._as_percent(live_ball_turnover_pct)
 
         ra_rate = self._to_float(features.get("zone_fga_rate_ra", 0.0))
         paint_rate = self._to_float(features.get("zone_fga_rate_paint", 0.0))
@@ -225,6 +232,7 @@ class PlayStyleScorer:
             + self._to_float(features.get("zone_fg_pct_mid_center", 0.0))
             + self._to_float(features.get("zone_fg_pct_mid_right", 0.0))
         ) / 3.0
+        ft_pct = self._to_float(features.get("ft_pct", 0.0))
 
         point_like = max(
             is_point,
@@ -288,13 +296,14 @@ class PlayStyleScorer:
                 + 6.0 * off_ball_profile
             ),
             "Mid range": self._score(
-                56.0 * self._norm(mid_attempts, 1.0, 7.5)
-                + 24.0 * self._norm(mid_rate, 0.08, 0.33)
-                + 20.0 * self._norm(usage_rate, 17.0, 33.0)
-                + 8.0 * self._norm(fga_pg, 10.0, 24.0)
-                + 10.0 * self._norm(mid_fg_pct, 0.36, 0.52)
-                + 8.0 * self._norm(unassisted_two_rate, 0.05, 0.24)
-                - 8.0 * self._norm(catch_and_shoot_three_rate, 0.06, 0.28)
+                32.0 * self._norm(mid_attempts, 1.0, 7.5)
+                + 19.0 * self._norm(mid_rate, 0.08, 0.33)
+                + 10.0 * self._norm(usage_rate, 17.0, 33.0)
+                + 6.0 * self._norm(fga_pg, 10.0, 24.0)
+                + 26.0 * self._norm(mid_fg_pct, 0.37, 0.53)
+                + 12.0 * self._norm(0.62 * mid_fg_pct + 0.23 * ft_pct + 0.15 * fg3_pct, 0.40, 0.57)
+                + 6.0 * self._norm(unassisted_two_rate, 0.05, 0.24)
+                - 9.0 * self._norm(catch_and_shoot_three_rate, 0.06, 0.28)
             ),
             "Handoff pass": self._score(
                 42.0 * self._norm(handoff_pos, 0.4, 5.0)
@@ -425,6 +434,16 @@ class PlayStyleScorer:
             scores["Guard post up"] *= 0.55
             scores["Pick and roll point"] *= 0.70
             scores["Isolation point"] *= 0.80
+
+        # Handoff passer should mostly be wings/bigs. PG/SG should rarely, if
+        # ever, have this as a core identity.
+        if position == "PG":
+            scores["Handoff pass"] *= 0.20
+        elif position == "SG":
+            scores["Handoff pass"] *= 0.40
+        elif position == "SF":
+            scores["Handoff pass"] *= 0.72
+
         if guard_like < 0.45:
             scores["Guard post up"] *= 0.35
         if post_pos < 1.2:
@@ -450,6 +469,11 @@ class PlayStyleScorer:
         # usage so that spot-up specialists with moderate volume keep credit.
         if fg3a_pg < 5.0 and usage_rate < 22.0:
             scores["3pt"] *= 0.45 + 0.55 * self._norm(fg3a_pg, 2.0, 5.0)
+
+        # Guard/wing creator check: high-volume perimeter creators with only
+        # average mid efficiency should not default to Mid range as top identity.
+        if position in {"PG", "SG", "SF"} and usage_rate >= 27.0 and fg3a_rate >= 0.32 and mid_fg_pct < 0.44:
+            scores["Mid range"] *= 0.85 + 0.15 * self._norm(mid_fg_pct, 0.34, 0.44)
 
         # Efficiency multipliers: boost/dampen styles based on PPP
         scores["Isolation"] *= self._eff_mult(iso_ppp)
@@ -560,7 +584,7 @@ class PlayStyleScorer:
 
         # Mid-range tendency reinforcement
         if shot_mid >= 30:
-            scores["Mid range"] *= 1.0 + 0.10 * self._norm(shot_mid, 30, 70)
+            scores["Mid range"] *= 1.0 + 0.06 * self._norm(shot_mid, 30, 70)
 
         # Iso tendency: high iso_vs_team = prefers isolation plays
         if iso_t >= 60:
@@ -652,6 +676,12 @@ class PlayStyleScorer:
             return float(value)
         except (TypeError, ValueError):
             return 0.0
+
+    @staticmethod
+    def _as_percent(value: float) -> float:
+        if value <= 1.0:
+            return value * 100.0
+        return value
 
     def _first_float(
         self,

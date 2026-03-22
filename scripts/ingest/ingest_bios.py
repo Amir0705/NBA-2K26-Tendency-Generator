@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -42,6 +43,58 @@ def _f(val: object, default: float = 0.0) -> float:
         return float(val or default)
     except (TypeError, ValueError):
         return default
+
+
+def _parse_int(val: object, default: int = 0) -> int:
+    try:
+        return int(float(str(val or default).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_birthdate_to_iso(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+
+    # CommonPlayerInfo usually returns dates like "MAY 29, 1985".
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            continue
+
+    # Fallback: if already has a leading ISO date, keep the date part.
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    return ""
+
+
+def _age_from_iso_birthdate(iso_birthdate: str) -> int | None:
+    if not iso_birthdate:
+        return None
+    try:
+        born = datetime.strptime(iso_birthdate, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+    today = date.today()
+    years = today.year - born.year
+    if (today.month, today.day) < (born.month, born.day):
+        years -= 1
+    return years if years >= 0 else None
+
+
+def _format_draft(year: str, rnd: str, pick: str) -> str:
+    y = str(year or "").strip()
+    r = str(rnd or "").strip()
+    p = str(pick or "").strip()
+
+    if not y or y == "Undrafted":
+        return "Undrafted"
+    if r and p:
+        return f"{y} R{r} P{p}"
+    return y
 
 
 def _get_player_info_with_retry(
@@ -94,6 +147,11 @@ def ingest_bios(
                 FROM player_seasons ps
                 LEFT JOIN player_info pi ON pi.player_id = ps.player_id
                 WHERE pi.height_in IS NULL
+                   OR pi.birthdate IS NULL OR pi.birthdate = ''
+                   OR pi.age IS NULL OR pi.age = 0
+                   OR pi.years_pro IS NULL
+                   OR pi.draft IS NULL OR pi.draft = ''
+                   OR pi.school IS NULL OR pi.school = ''
                 ORDER BY ps.player_id
                 """
             ).fetchall()
@@ -130,14 +188,27 @@ def ingest_bios(
             except ValueError:
                 weight = None
 
-            birthdate = str(r.get("BIRTHDATE") or "").strip()[:10]  # "YYYY-MM-DD…" → trim
+            birthdate = _parse_birthdate_to_iso(str(r.get("BIRTHDATE") or ""))
             position = str(r.get("POSITION") or "").strip()
             full_name = str(r.get("DISPLAY_FIRST_LAST") or "").strip()
+            school = str(r.get("SCHOOL") or "").strip()
+            years_pro_raw = str(r.get("SEASON_EXP") or "").strip()
+            years_pro = 0 if years_pro_raw.upper() == "R" else _parse_int(years_pro_raw, 0)
+            draft = _format_draft(
+                str(r.get("DRAFT_YEAR") or "").strip(),
+                str(r.get("DRAFT_ROUND") or "").strip(),
+                str(r.get("DRAFT_NUMBER") or "").strip(),
+            )
+            age_raw = r.get("AGE")
+            age = _parse_int(age_raw, -1)
+            if age < 0:
+                derived_age = _age_from_iso_birthdate(birthdate)
+                age = derived_age if derived_age is not None else 0
 
             conn.execute(
                 """
-                INSERT INTO player_info (player_id, full_name, position, height_in, weight_lbs, birthdate)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO player_info (player_id, full_name, position, height_in, weight_lbs, birthdate, age, years_pro, draft, school)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (player_id) DO UPDATE SET
                     full_name  = CASE WHEN excluded.full_name  != '' THEN excluded.full_name
                                       ELSE player_info.full_name  END,
@@ -147,9 +218,15 @@ def ingest_bios(
                     weight_lbs = COALESCE(excluded.weight_lbs, player_info.weight_lbs),
                     birthdate  = CASE WHEN excluded.birthdate  != '' THEN excluded.birthdate
                                       ELSE player_info.birthdate  END,
+                    age        = COALESCE(NULLIF(excluded.age, 0), player_info.age),
+                    years_pro  = COALESCE(excluded.years_pro, player_info.years_pro),
+                    draft      = CASE WHEN excluded.draft      != '' THEN excluded.draft
+                                      ELSE player_info.draft END,
+                    school     = CASE WHEN excluded.school     != '' THEN excluded.school
+                                      ELSE player_info.school END,
                     fetched_at = now()
                 """,
-                [pid, full_name, position, height, weight, birthdate],
+                [pid, full_name, position, height, weight, birthdate, age, years_pro, draft, school],
             )
             log_done(conn, "bios", task_key)
             done_count += 1

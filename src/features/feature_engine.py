@@ -1229,4 +1229,36 @@ class FeatureEngine:
             if k not in blended:
                 blended[k] = v
 
+        # Durability history summary: rolling last 5 seasons (s0 + previous 4).
+        # This keeps durability recent rather than lifetime-biased.
+        dur_seasons = [s0_season] + prior_seasons(s0_season, count=4)
+        dur_features: list[dict[str, Any]] = []
+        for season in dur_seasons:
+            try:
+                dur_features.append(self.build_features(player_id, season=season))
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Fallback to currently available blended-season inputs if recent pulls fail.
+        if not dur_features:
+            dur_features = [f for _, f in weighted]
+
+        seasons_sampled = len(dur_features)
+        games_played_total = 0.0
+        for f in dur_features:
+            try:
+                games_played_total += float(f.get("gp", f.get("games_played", 0)) or 0.0)
+            except (TypeError, ValueError):
+                pass
+
+        games_possible_total = 82.0 * max(1, seasons_sampled)
+        games_missed_total = max(0.0, games_possible_total - games_played_total)
+        availability_ratio = games_played_total / games_possible_total if games_possible_total > 0 else 0.0
+
+        blended["durability_seasons_sampled"] = float(seasons_sampled)
+        blended["durability_games_played_total"] = games_played_total
+        blended["durability_games_possible_total"] = games_possible_total
+        blended["durability_games_missed_total"] = games_missed_total
+        blended["durability_availability_ratio"] = availability_ratio
+
         return blended

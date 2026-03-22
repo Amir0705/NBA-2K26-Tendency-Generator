@@ -42,8 +42,30 @@ _TABLES: list[str] = [
         height_in   REAL,        -- stored as decimal inches (e.g. 79.0 for 6-7)
         weight_lbs  REAL,
         birthdate   TEXT    DEFAULT '',
+        age         INTEGER,
+        years_pro   INTEGER,
+        draft       TEXT    DEFAULT '',
+        school      TEXT    DEFAULT '',
         fetched_at  TIMESTAMP DEFAULT current_timestamp
     )
+    """,
+
+    # Backward-compatible adds for existing DBs created before demographics columns.
+    """
+    ALTER TABLE player_info
+    ADD COLUMN IF NOT EXISTS age INTEGER
+    """,
+    """
+    ALTER TABLE player_info
+    ADD COLUMN IF NOT EXISTS years_pro INTEGER
+    """,
+    """
+    ALTER TABLE player_info
+    ADD COLUMN IF NOT EXISTS draft TEXT DEFAULT ''
+    """,
+    """
+    ALTER TABLE player_info
+    ADD COLUMN IF NOT EXISTS school TEXT DEFAULT ''
     """,
 
     # ------------------------------------------------------------------

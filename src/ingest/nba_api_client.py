@@ -99,6 +99,7 @@ class NBAApiClient:
                     team_id = int(profile.get("team_id", 0) or 0)
                     team_abbr = str(profile.get("team_abbreviation", "") or "")
                 return {
+                    "full_name": str(w_info.get("full_name", "") or ""),
                     "position": str(w_info.get("position", "") or ""),
                     "height": self._inches_to_height_str(w_info.get("height_in")),
                     "weight": str(w_info.get("weight_lbs", "") or ""),
@@ -119,6 +120,7 @@ class NBAApiClient:
         birthdate = str(bio.get("birthdate", "") or "")
 
         return {
+            "full_name": "",
             "position": position,
             "height": height,
             "weight": weight,

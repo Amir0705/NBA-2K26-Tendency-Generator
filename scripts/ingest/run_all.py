@@ -4,7 +4,7 @@ Usage:
     python -m scripts.ingest.run_all               # full run
     python -m scripts.ingest.run_all --skip-bios   # skip slow bio step
     python -m scripts.ingest.run_all --only box    # run one step
-    python -m scripts.ingest.run_all --min-year 2016 --max-year 2024
+    python -m scripts.ingest.run_all --min-year 2016 --max-year 2025
     python -m scripts.ingest.run_all --force       # ignore done-flags
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ def _elapsed(start: float) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="NBA DuckDB warehouse — full ingest")
     parser.add_argument("--min-year", type=int, default=2000, help="First season start year")
-    parser.add_argument("--max-year", type=int, default=2024, help="Last season start year")
+    parser.add_argument("--max-year", type=int, default=2025, help="Last season start year")
     parser.add_argument("--force", action="store_true", help="Re-ingest even if already done")
     parser.add_argument("--skip-bios", action="store_true", help="Skip the slow bio step")
     parser.add_argument(
