@@ -2,11 +2,16 @@
   "name": "nba-2k26-premium-web",
   "version": "1.0.0",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "desktop:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "desktop:pack": "electron-builder --win dir",
+    "desktop:zip": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$out='dist-desktop/ATD-N2K26-Generator-portable.zip'; if (Test-Path $out) { Remove-Item $out -Force }; Compress-Archive -Path 'dist-desktop/win-unpacked/*' -DestinationPath $out -Force\"",
+    "desktop:ship": "npm run desktop:pack && npm run desktop:zip"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
@@ -24,10 +29,33 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
+    "electron": "^35.1.4",
+    "electron-builder": "^26.0.12",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.15",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.atd.n2k26.desktop",
+    "productName": "ATD N2K26 Generator",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "electron/**/*",
+      "desktop.config.json",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "ATD-N2K26-Generator-${version}.exe"
+    }
   }
 }
